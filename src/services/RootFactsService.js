@@ -33,27 +33,34 @@ export class RootFactsService {
     this.factsRepository = new FactsRepository();
     this.textClient = null;
     this.isModelLoaded = false;
+    this.isLoadingModel = false;
     this.isGenerating = false;
     this.currentTone = DEFAULT_TONE;
   }
 
   /**
    * Lazily creates and loads the currently configured text model. Safe to
-   * call multiple times - a second call is a no-op once loaded. Any failure
-   * (bad config, network error, no working backend) is caught here: the app
-   * must keep working from the knowledge base alone even if the model never
-   * loads.
+   * call multiple times - a no-op once loaded, and a no-op if a load is
+   * already in flight (rather than starting a second overlapping one).
+   *
+   * Deliberately does NOT set any permanent "give up" flag on failure: bad
+   * config, a network error, or no working backend are all caught and
+   * logged here so the app keeps working from the knowledge base alone,
+   * but isModelLoaded simply stays false, so the *next* call to loadModel()
+   * (e.g. after the next successful detection) retries from scratch - a
+   * transient failure never permanently disables tone rewriting.
    */
   async loadModel() {
-    if (this.isModelLoaded) return;
+    if (this.isModelLoaded || this.isLoadingModel) return;
 
+    this.isLoadingModel = true;
     try {
-      const { modelId, task, dtype } = getActiveTextModelConfig();
+      const { modelId, task, dtypeByBackend } = getActiveTextModelConfig();
 
       this.textClient = new TextGenerationClient({
         modelId,
         task,
-        dtype,
+        dtypeByBackend,
         backendPreference: BACKEND_PREFERENCE,
       });
 
@@ -62,6 +69,8 @@ export class RootFactsService {
     } catch (error) {
       logError('RootFactsService.loadModel', error);
       this.isModelLoaded = false;
+    } finally {
+      this.isLoadingModel = false;
     }
   }
 
@@ -104,18 +113,28 @@ export class RootFactsService {
     }
 
     this.isGenerating = true;
-    try {
-      const rewritten = await withTimeout(
-        this._rewriteTone(verifiedFact, this.currentTone),
-        GENERATION_TIMEOUT_MS,
-      );
+    const generationPromise = this._rewriteTone(verifiedFact, this.currentTone);
 
+    // Transformers.js gives no way to cancel an in-flight pipeline call, so
+    // withTimeout() below only stops *this method* from waiting on it - the
+    // real call keeps running in the background. isGenerating is therefore
+    // released here, tied to generationPromise itself settling, instead of
+    // in a `finally` on the timeout race: if the timeout wins, the flag
+    // stays true for as long as the real call is still running, so any
+    // generateFacts() call made in that window safely falls back to the
+    // verified fact instead of starting a second invocation against the
+    // same pipeline instance. Only once the real call finishes does the
+    // next call get to actually use the pipeline again.
+    generationPromise.catch(() => {}).finally(() => {
+      this.isGenerating = false;
+    });
+
+    try {
+      const rewritten = await withTimeout(generationPromise, GENERATION_TIMEOUT_MS);
       return this._isUsableRewrite(rewritten) ? rewritten : verifiedFact;
     } catch (error) {
       logError('RootFactsService.generateFacts', error);
       return verifiedFact;
-    } finally {
-      this.isGenerating = false;
     }
   }
 

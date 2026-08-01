@@ -20,14 +20,17 @@ export class TextGenerationClient {
    * @param {object} options
    * @param {string} options.modelId - Hugging Face repo id of the model.
    * @param {string} options.task - Transformers.js pipeline task name.
-   * @param {string} options.dtype - Quantization/precision variant to load.
+   * @param {Object<string, string>} options.dtypeByBackend - Quantization/
+   *   precision variant to request per device (e.g. { webgpu: 'q4f16',
+   *   wasm: 'q4' }), so each candidate is attempted with the dtype that
+   *   actually suits it instead of one dtype for every device.
    * @param {string[]} options.backendPreference - Devices to try, in order
    *   (e.g. ['webgpu', 'wasm']). The first one that loads successfully wins.
    */
-  constructor({ modelId, task, dtype, backendPreference }) {
+  constructor({ modelId, task, dtypeByBackend, backendPreference }) {
     this.modelId = modelId;
     this.task = task;
-    this.dtype = dtype;
+    this.dtypeByBackend = dtypeByBackend;
     this.backendPreference = backendPreference;
 
     this.pipelineInstance = null;
@@ -51,7 +54,7 @@ export class TextGenerationClient {
 
     this.resolvedDevice = await selectFirstWorkingBackend(candidates, async (device) => {
       this.pipelineInstance = await pipeline(this.task, this.modelId, {
-        dtype: this.dtype,
+        dtype: this.dtypeByBackend[device],
         device,
       });
     });

@@ -19,7 +19,6 @@ function App() {
   // instead of one captured at the render where a tick was scheduled.
   const isRunningRef = useRef(false);
   const detectionCleanupRef = useRef(null);
-  const hasStartedGeneratorLoadRef = useRef(false);
   const copyFeedbackTimeoutRef = useRef(null);
 
   // Create the three services once and load the vision model up front - it
@@ -128,14 +127,15 @@ function App() {
     actions.setFunFactData(null); // InfoPanel shows its "loading fact" state for this
     actions.setAppState('result');
 
-    if (!hasStartedGeneratorLoadRef.current) {
-      hasStartedGeneratorLoadRef.current = true;
-      // Fire-and-forget: the tone-rewrite model loads in the background.
-      // generateFacts() below already falls back to the verified fact on
-      // its own whenever the model isn't ready yet, so nothing here waits
-      // on this promise.
-      rootFactsService.loadModel().catch((error) => logError('App.loadGeneratorModel', error));
-    }
+    // Fire-and-forget: the tone-rewrite model loads in the background.
+    // generateFacts() below already falls back to the verified fact on its
+    // own whenever the model isn't ready yet, so nothing here waits on this
+    // promise. Calling this on every detection (rather than only once ever)
+    // is intentional and safe: RootFactsService.loadModel() no-ops once the
+    // model is loaded and guards against overlapping attempts itself, so a
+    // transient failure (e.g. a network blip) gets retried on the next
+    // detection instead of permanently disabling tone rewriting.
+    rootFactsService.loadModel().catch((error) => logError('App.loadGeneratorModel', error));
 
     const [fact] = await Promise.all([
       rootFactsService.generateFacts(result.className),
@@ -151,18 +151,25 @@ function App() {
   async function startScanning(cameraType) {
     if (isRunningRef.current) return;
 
+    // Set synchronously, before the first await below, so a second call
+    // arriving while this one is still waiting on camera permission sees
+    // this immediately and bails at the guard above - this closes the race
+    // window a button `disabled` attribute alone can't close, since React
+    // hasn't re-rendered with the new state yet at that point.
+    isRunningRef.current = true;
+
     actions.resetResults();
     setIsCopied(false);
 
     try {
       await state.services.camera.startCamera(cameraType);
     } catch (error) {
+      isRunningRef.current = false; // roll back - the attempt failed, nothing is running
       logError('App.startScanning', error);
       actions.setError(error.message);
       return;
     }
 
-    isRunningRef.current = true;
     actions.setRunning(true);
     scheduleNextTick();
   }

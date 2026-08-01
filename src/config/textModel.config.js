@@ -9,18 +9,28 @@ import { TONE_CONFIG } from '../utils/config.js';
  * No other file needs to change - RootFactsService and TextGenerationClient
  * only ever read the *active* entry, never a hardcoded model id.
  */
+// dtypeByBackend lets each candidate backend load the ONNX weight variant
+// that actually suits it - q4f16's fp16 activations are tuned for WebGPU's
+// compute shaders, while the WASM/CPU fallback uses plain q4 instead, which
+// is the more broadly-supported quantization there.
 export const TEXT_MODEL_REGISTRY = {
   'gemma3-270m': {
     label: 'Gemma 3 270M Instruct (ONNX)',
     modelId: 'onnx-community/gemma-3-270m-it-ONNX',
     task: 'text-generation',
-    dtype: 'q4f16',
+    dtypeByBackend: {
+      webgpu: 'q4f16',
+      wasm: 'q4',
+    },
   },
   'qwen2.5-0.5b': {
     label: 'Qwen2.5 0.5B Instruct (ONNX)',
     modelId: 'onnx-community/Qwen2.5-0.5B-Instruct',
     task: 'text-generation',
-    dtype: 'q4f16',
+    dtypeByBackend: {
+      webgpu: 'q4f16',
+      wasm: 'q4',
+    },
   },
 };
 
