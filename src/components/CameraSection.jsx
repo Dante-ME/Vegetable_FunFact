@@ -34,10 +34,10 @@ function CameraSection({
   }, [fps, services.camera]);
 
   const handleCameraChange = (newCameraType) => {
+    // Only updates local selection - the dropdown is disabled while running
+    // (see below), and actually starting the camera is App.jsx's job via
+    // onToggleCamera, so there is nothing else to do here.
     setCameraType(newCameraType);
-    if (services.camera && services.camera.isActive()) {
-      services.camera.startCamera();
-    }
   };
 
   const handleFpsChange = (newFps) => {
@@ -95,7 +95,7 @@ function CameraSection({
           <button
             id="btn-toggle"
             className={`capture-btn ${isRunning ? 'scanning' : ''}`}
-            onClick={onToggleCamera}
+            onClick={() => onToggleCamera(cameraType)}
             disabled={buttonDisabled}
             aria-label={buttonText}
             style={{ opacity: buttonDisabled ? 0.6 : 1 }}

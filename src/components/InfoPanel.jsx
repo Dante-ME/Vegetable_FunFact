@@ -1,6 +1,6 @@
-import { Sparkles, Search, CheckCircle, Lightbulb, Copy, Share2 } from 'lucide-react';
+import { Sparkles, Search, CheckCircle, Lightbulb, Copy, Check, Share2 } from 'lucide-react';
 
-function InfoPanel({ appState, detectionResult, funFactData, error, onCopyFact }) {
+function InfoPanel({ appState, detectionResult, funFactData, error, onCopyFact, isCopied }) {
   const isIdle = appState === 'idle';
   const isAnalyzing = appState === 'analyzing';
   const isResult = appState === 'result';
@@ -36,7 +36,7 @@ function InfoPanel({ appState, detectionResult, funFactData, error, onCopyFact }
   const renderResultState = () => {
     if (!detectionResult) return null;
 
-    const confidence = Math.round(detectionResult.score * 100);
+    const confidence = Math.round(detectionResult.confidence);
 
     const renderFunFactContent = () => {
       if (funFactData === null) {
@@ -83,11 +83,11 @@ function InfoPanel({ appState, detectionResult, funFactData, error, onCopyFact }
             {funFactData && funFactData !== 'error' && (
               <button
                 id="btn-copy"
-                className="copy-btn"
+                className={`copy-btn ${isCopied ? 'copied' : ''}`}
                 onClick={onCopyFact}
                 title="Salin fakta"
               >
-                <Copy size={18} />
+                {isCopied ? <Check size={18} /> : <Copy size={18} />}
               </button>
             )}
           </div>
