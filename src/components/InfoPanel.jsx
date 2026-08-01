@@ -50,9 +50,9 @@ function InfoPanel({ appState, detectionResult, funFactData, error, onCopyFact, 
 
       if (funFactData === 'error') {
         return (
-          <div style={{ 
-            padding: '0.75rem', 
-            background: '#fef3c7', 
+          <div style={{
+            padding: '0.75rem',
+            background: '#fef3c7',
             borderRadius: 'var(--radius-sm)',
             fontSize: '0.875rem',
             color: '#92400e'
@@ -86,6 +86,7 @@ function InfoPanel({ appState, detectionResult, funFactData, error, onCopyFact, 
                 className={`copy-btn ${isCopied ? 'copied' : ''}`}
                 onClick={onCopyFact}
                 title="Salin fakta"
+                aria-label={isCopied ? 'Fakta telah disalin' : 'Salin fakta'}
               >
                 {isCopied ? <Check size={18} /> : <Copy size={18} />}
               </button>
@@ -96,9 +97,9 @@ function InfoPanel({ appState, detectionResult, funFactData, error, onCopyFact, 
         <div className="confidence-bar">
           <span className="confidence-label">Kepercayaan</span>
           <div className="confidence-track">
-            <div 
+            <div
               id="confidence-fill"
-              className="confidence-fill" 
+              className="confidence-fill"
               style={{ width: `${confidence}%` }}
             ></div>
           </div>

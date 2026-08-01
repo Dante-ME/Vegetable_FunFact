@@ -16,6 +16,9 @@ function CameraSection({
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
 
+  // services.camera is only ever set once (App.jsx creates it on mount and
+  // never replaces it), so this only needs to run when that first becomes
+  // available - not on every render.
   useEffect(() => {
     if (services.camera) {
       if (videoRef.current && !services.camera.video) {
@@ -25,7 +28,7 @@ function CameraSection({
         services.camera.setCanvasElement(canvasRef.current);
       }
     }
-  });
+  }, [services.camera]);
 
   useEffect(() => {
     if (services.camera) {
@@ -67,7 +70,7 @@ function CameraSection({
             playsInline
             className={isRunning ? '' : 'hidden'}
           />
-          
+
           <canvas
             ref={canvasRef}
             id="media-canvas"
@@ -109,6 +112,7 @@ function CameraSection({
             <Camera size={16} />
             <select
               id="camera-select"
+              aria-label="Pilih kamera"
               value={cameraType}
               onChange={(e) => handleCameraChange(e.target.value)}
               disabled={isRunning}
@@ -122,6 +126,7 @@ function CameraSection({
             <span id="fps-label">{fps} FPS</span>
             <input
               id="fps-slider"
+              aria-labelledby="fps-label"
               type="range"
               min="15"
               max="60"
@@ -136,11 +141,12 @@ function CameraSection({
             <Mic size={16} />
             <select
               id="tone-select"
+              aria-label="Pilih gaya bahasa"
               value={currentTone || 'normal'}
               onChange={handleToneChange}
               disabled={isRunning}
             >
-              {TONE_CONFIG.availableTones.map(option => (
+              {TONE_CONFIG.availableTones.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
                 </option>

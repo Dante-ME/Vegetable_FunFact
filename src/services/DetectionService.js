@@ -1,6 +1,11 @@
 import * as tf from '@tensorflow/tfjs';
 import '@tensorflow/tfjs-backend-webgpu';
-import { isWebGPUSupported, validateModelMetadata, logError } from '../utils/common.js';
+import {
+  filterSupportedBackends,
+  selectFirstWorkingBackend,
+  validateModelMetadata,
+  logError,
+} from '../utils/common.js';
 import { APP_CONFIG } from '../utils/config.js';
 import {
   DETECTION_MODEL_CONFIG,
@@ -130,31 +135,17 @@ export class DetectionService {
   /**
    * Tries each backend in BACKEND_PREFERENCE in order, skipping WebGPU up
    * front on browsers that don't expose the API at all, and falling
-   * through to the next candidate if a backend fails to initialize.
-   * Mirrors the same fallback strategy TextGenerationClient uses for the
-   * text model, so backend-adaptive logic reads the same way everywhere.
+   * through to the next candidate if a backend fails to initialize. Uses
+   * the same shared fallback algorithm as TextGenerationClient, so
+   * backend-adaptive logic reads (and behaves) the same way everywhere.
    */
   async _setAdaptiveBackend() {
-    const candidates = BACKEND_PREFERENCE.filter(
-      (backend) => backend !== 'webgpu' || isWebGPUSupported(),
-    );
+    const candidates = filterSupportedBackends(BACKEND_PREFERENCE);
 
-    let lastError = new Error(
-      `DetectionService: no usable backend in [${BACKEND_PREFERENCE.join(', ')}].`,
-    );
-
-    for (const backend of candidates) {
-      try {
-        await tf.setBackend(backend);
-        await tf.ready();
-        this.resolvedBackend = backend;
-        return;
-      } catch (error) {
-        lastError = error;
-      }
-    }
-
-    throw lastError;
+    this.resolvedBackend = await selectFirstWorkingBackend(candidates, async (backend) => {
+      await tf.setBackend(backend);
+      await tf.ready();
+    });
   }
 
   /** Releases the model from memory. Safe to call even if never loaded. */

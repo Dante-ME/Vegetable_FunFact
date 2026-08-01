@@ -20,6 +20,7 @@ function App() {
   const isRunningRef = useRef(false);
   const detectionCleanupRef = useRef(null);
   const hasStartedGeneratorLoadRef = useRef(false);
+  const copyFeedbackTimeoutRef = useRef(null);
 
   // Create the three services once and load the vision model up front - it
   // gates the scan button (see CameraSection's isModelReady check). The
@@ -61,6 +62,7 @@ function App() {
       isRunningRef.current = false;
       detectionCleanupRef.current?.();
       detectionCleanupRef.current = null;
+      clearTimeout(copyFeedbackTimeoutRef.current);
       cameraService.stopCamera();
       detectionService.dispose();
       rootFactsService.dispose();
@@ -192,7 +194,8 @@ function App() {
     try {
       await navigator.clipboard.writeText(factText);
       setIsCopied(true);
-      setTimeout(() => setIsCopied(false), 2000);
+      clearTimeout(copyFeedbackTimeoutRef.current);
+      copyFeedbackTimeoutRef.current = setTimeout(() => setIsCopied(false), 2000);
     } catch (error) {
       logError('App.handleCopyFact', error);
       actions.setError('Gagal menyalin fakta. Periksa izin clipboard pada browser.');
@@ -229,27 +232,31 @@ function App() {
       </footer>
 
       {state.error && (
-        <div style={{
-          position: 'fixed',
-          bottom: '1rem',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          maxWidth: '380px',
-          padding: '0.875rem 1rem',
-          background: '#fef2f2',
-          border: '1px solid #fecaca',
-          borderRadius: 'var(--radius-md)',
-          color: '#991b1b',
-          fontSize: '0.8125rem',
-          boxShadow: 'var(--shadow-lg)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '0.5rem',
-          zIndex: 1000
-        }}>
+        <div
+          role="alert"
+          style={{
+            position: 'fixed',
+            bottom: '1rem',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            maxWidth: '380px',
+            padding: '0.875rem 1rem',
+            background: '#fef2f2',
+            border: '1px solid #fecaca',
+            borderRadius: 'var(--radius-md)',
+            color: '#991b1b',
+            fontSize: '0.8125rem',
+            boxShadow: 'var(--shadow-lg)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            zIndex: 1000
+          }}
+        >
           <strong>Error:</strong> {state.error}
           <button
             onClick={() => actions.setError(null)}
+            aria-label="Tutup pesan error"
             style={{
               marginLeft: 'auto',
               background: 'transparent',

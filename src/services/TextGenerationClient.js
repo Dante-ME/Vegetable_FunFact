@@ -1,13 +1,19 @@
-import { pipeline } from '@huggingface/transformers';
-import { isWebGPUSupported } from '../utils/common.js';
+import { filterSupportedBackends, selectFirstWorkingBackend } from '../utils/common.js';
 
 /**
  * Thin wrapper around a single Transformers.js pipeline.
  *
- * This is the only file in the codebase that imports `@huggingface/transformers`
- * directly. Everything else (RootFactsService included) talks to this class
- * through a small, model-agnostic interface (load/generate/dispose), so
- * swapping the underlying model or runtime never touches business logic.
+ * This is the only file in the codebase that uses `@huggingface/transformers`.
+ * Everything else (RootFactsService included) talks to this class through a
+ * small, model-agnostic interface (load/generate/dispose), so swapping the
+ * underlying model or runtime never touches business logic.
+ *
+ * The library itself is dynamically imported inside load() rather than
+ * imported at the top of this file. Statically importing it would pull its
+ * full ONNX Runtime bundle into the app's initial JS payload, even though
+ * RootFactsService only calls load() lazily, well after first paint - the
+ * dynamic import lets the bundler split it into its own chunk that's only
+ * fetched when a rewrite is actually about to run.
  */
 export class TextGenerationClient {
   /**
@@ -40,28 +46,17 @@ export class TextGenerationClient {
   async load() {
     if (this.pipelineInstance) return this.pipelineInstance;
 
-    const candidates = this.backendPreference.filter(
-      (device) => device !== 'webgpu' || isWebGPUSupported(),
-    );
+    const { pipeline } = await import('@huggingface/transformers');
+    const candidates = filterSupportedBackends(this.backendPreference);
 
-    let lastError = new Error(
-      `TextGenerationClient: no usable backend in [${this.backendPreference.join(', ')}].`,
-    );
+    this.resolvedDevice = await selectFirstWorkingBackend(candidates, async (device) => {
+      this.pipelineInstance = await pipeline(this.task, this.modelId, {
+        dtype: this.dtype,
+        device,
+      });
+    });
 
-    for (const device of candidates) {
-      try {
-        this.pipelineInstance = await pipeline(this.task, this.modelId, {
-          dtype: this.dtype,
-          device,
-        });
-        this.resolvedDevice = device;
-        return this.pipelineInstance;
-      } catch (error) {
-        lastError = error;
-      }
-    }
-
-    throw lastError;
+    return this.pipelineInstance;
   }
 
   /**

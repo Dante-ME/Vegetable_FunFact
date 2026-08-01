@@ -14,8 +14,3 @@ export const TONE_CONFIG = {
   ],
   defaultTone: 'normal'
 };
-
-export const isValidDetection = (result) => {
-  const { detectionConfidenceThreshold } = APP_CONFIG;
-  return result && result.isValid && result.confidence >= detectionConfidenceThreshold;
-};

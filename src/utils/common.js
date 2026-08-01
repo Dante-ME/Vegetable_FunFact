@@ -41,6 +41,41 @@ export const validateModelMetadata = (metadata) => {
   return metadata && metadata.labels && Array.isArray(metadata.labels);
 };
 
+/**
+ * Removes 'webgpu' from a backend/device candidate list on browsers that
+ * don't expose the API at all, so it's never attempted (and never counted
+ * as a failure) instead of just waiting for it to fail.
+ */
+export const filterSupportedBackends = (candidates) =>
+  candidates.filter((candidate) => candidate !== 'webgpu' || isWebGPUSupported());
+
+/**
+ * Shared "prefer WebGPU, fall back automatically" algorithm used by both
+ * DetectionService (TensorFlow.js backends) and TextGenerationClient
+ * (Transformers.js devices) - the two services attempt different things per
+ * candidate, but the try-in-order-until-one-works logic itself is identical,
+ * so it lives here once instead of being duplicated in both services.
+ *
+ * @param {string[]} candidates - ordered list of backend/device names to try.
+ * @param {(candidate: string) => Promise<void>} attempt - performs the
+ *   actual backend switch/load; should throw if the candidate doesn't work.
+ * @returns {Promise<string>} the first candidate for which `attempt` succeeded.
+ */
+export const selectFirstWorkingBackend = async (candidates, attempt) => {
+  let lastError = new Error(`No usable backend in [${candidates.join(', ')}].`);
+
+  for (const candidate of candidates) {
+    try {
+      await attempt(candidate);
+      return candidate;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError;
+};
+
 export const getCameraErrorMessage = (error) => {
   const errorMessages = {
     'NotAllowedError': 'Izin kamera ditolak. Harap izinkan akses kamera.',
