@@ -107,11 +107,12 @@ export class DetectionService {
     }
   }
 
-  /** Resizes and normalizes a raw frame to match what the model was trained on. */
+  /** Crops, resizes, and normalizes a raw frame to match what the model was trained on. */
   _preprocess(imageElement) {
+    const image = tf.browser.fromPixels(imageElement);
+
     // Teachable Machine's standard preprocessing maps 0-255 RGB into [-1, 1].
-    return tf.browser
-      .fromPixels(imageElement)
+    return this._centerSquareCrop(image)
       .resizeBilinear([this.imageSize, this.imageSize])
       .toFloat()
       .div(127.5)
@@ -119,16 +120,53 @@ export class DetectionService {
       .expandDims(0);
   }
 
-  /** Converts raw softmax scores into the app-wide detection result shape. */
+  /**
+   * Crops a [height, width, 3] frame to a centered square using the shorter
+   * dimension, before it gets resized to the model's input size.
+   *
+   * Camera frames are rectangular (e.g. 4:3 or 16:9), but Teachable Machine
+   * crops to a square before resizing, both when training and in its own
+   * runtime - resizing a rectangular frame directly instead stretches the
+   * subject non-uniformly into a shape the model was never trained on,
+   * which produced confident but wrong predictions, worse for elongated
+   * vegetables and dependent on the camera's aspect ratio.
+   */
+  _centerSquareCrop(image) {
+    const [height, width] = image.shape;
+    const size = Math.min(height, width);
+    const top = Math.floor((height - size) / 2);
+    const left = Math.floor((width - size) / 2);
+
+    return image.slice([top, left, 0], [size, size, 3]);
+  }
+
+  /**
+   * Converts raw softmax scores into the app-wide detection result shape.
+   *
+   * A prediction is only marked valid if the top class both clears the
+   * confidence threshold AND leads the runner-up by at least
+   * detectionMinMargin - a single-label classifier still produces some
+   * confident-looking score for whichever class its pooled features lean
+   * toward even on an ambiguous or mixed-content frame, so the margin over
+   * the second-best class is an extra signal that the frame wasn't a close
+   * call between two candidates.
+   */
   _toDetectionResult(scores) {
     const scoresArray = Array.from(scores);
-    const bestIndex = scoresArray.indexOf(Math.max(...scoresArray));
+    const rankedIndices = [...scoresArray.keys()].sort((a, b) => scoresArray[b] - scoresArray[a]);
+    const bestIndex = rankedIndices[0];
+    const runnerUpIndex = rankedIndices[1];
+
     const confidence = Math.round(scoresArray[bestIndex] * 10000) / 100; // 0-100, 2 decimals
+    const runnerUpConfidence = Math.round(scoresArray[runnerUpIndex] * 10000) / 100;
+    const margin = confidence - runnerUpConfidence;
 
     return {
       className: this.labels[bestIndex],
       confidence,
-      isValid: confidence >= APP_CONFIG.detectionConfidenceThreshold,
+      isValid:
+        confidence >= APP_CONFIG.detectionConfidenceThreshold &&
+        margin >= APP_CONFIG.detectionMinMargin,
     };
   }
 

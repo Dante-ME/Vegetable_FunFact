@@ -5,7 +5,7 @@ import { logError, withTimeout } from '../utils/common.js';
 import {
   getActiveTextModelConfig,
   BACKEND_PREFERENCE,
-  GENERATION_DEFAULTS,
+  getGenerationConfig,
   GENERATION_TIMEOUT_MS,
   DEFAULT_TONE,
   isValidTone,
@@ -140,7 +140,7 @@ export class RootFactsService {
 
   async _rewriteTone(originalFact, tone) {
     const messages = buildToneRewritePrompt(originalFact, tone);
-    return this.textClient.generate(messages, GENERATION_DEFAULTS);
+    return this.textClient.generate(messages, getGenerationConfig(tone));
   }
 
   /**

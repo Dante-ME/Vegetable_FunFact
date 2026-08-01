@@ -1,20 +1,92 @@
 {
-  "Beetroot": "Bit berwarna merah keunguan karena mengandung pigmen alami bernama betasianin, dan juga merupakan sumber folat yang baik.",
-  "Paprika": "Paprika, terutama yang berwarna merah, mengandung vitamin C yang lebih tinggi dibandingkan buah jeruk.",
-  "Cabbage": "Kubis termasuk dalam keluarga tanaman yang sama dengan brokoli dan kembang kol, serta kaya akan serat dan vitamin K.",
-  "Carrot": "Wortel kaya akan beta karoten, senyawa yang diubah tubuh menjadi vitamin A dan bermanfaat bagi kesehatan mata.",
-  "Cauliflower": "Kembang kol termasuk sayuran keluarga kubis-kubisan yang kaya vitamin C dan serat, namun rendah kalori.",
-  "Chilli": "Cabai mengandung senyawa capsaicin yang menghasilkan rasa pedas dan sensasi hangat pada tubuh.",
-  "Corn": "Jagung merupakan sumber karbohidrat kompleks dan serat, serta mengandung antioksidan lutein yang baik untuk kesehatan mata.",
-  "Cucumber": "Timun memiliki kandungan air sekitar 95 persen, sehingga baik untuk membantu menjaga tubuh tetap terhidrasi.",
-  "eggplant": "Kulit terong berwarna ungu mengandung antioksidan bernama nasunin yang membantu melindungi sel-sel tubuh.",
-  "Garlic": "Bawang putih mengandung senyawa allicin yang terbentuk saat dihaluskan atau dipotong, dan dikenal memiliki sifat antibakteri.",
-  "Ginger": "Jahe secara turun-temurun digunakan untuk membantu meredakan mual dan memberikan sensasi hangat pada tubuh.",
-  "Lettuce": "Selada memiliki kandungan air yang tinggi dan rendah kalori, sehingga sering dijadikan bahan utama salad.",
-  "Onion": "Bawang bombay mengandung senyawa sulfur yang dapat memicu keluarnya air mata saat dipotong akibat reaksi enzim di dalamnya.",
-  "Peas": "Kacang polong tergolong sebagai polong-polongan yang sering dianggap sayuran, dan merupakan sumber protein nabati serta serat yang baik.",
-  "Potato": "Kentang adalah sumber karbohidrat dan kalium yang baik, dengan sebagian besar kandungan vitamin C-nya berada tepat di bawah kulitnya.",
-  "Turnip": "Turnip adalah sayuran umbi yang daunnya juga dapat dimakan, serta merupakan sumber vitamin C dan serat yang baik.",
-  "Soybean": "Kedelai merupakan salah satu sumber protein nabati lengkap dan menjadi bahan dasar pembuatan tempe serta tahu.",
-  "Spinach": "Bayam kaya akan zat besi dan vitamin K, serta termasuk salah satu sayuran hijau dengan kandungan nutrisi terpadat."
+  "Beetroot": [
+    "Bit berwarna merah keunguan karena mengandung pigmen alami bernama betasianin, dan juga merupakan sumber folat yang baik.",
+    "Bit sering digunakan sebagai pewarna alami pada makanan karena warnanya yang pekat dan tahan lama.",
+    "Daun bit juga bisa dimakan dan memiliki nilai gizi yang tinggi, mirip seperti bayam."
+  ],
+  "Paprika": [
+    "Paprika, terutama yang berwarna merah, mengandung vitamin C yang lebih tinggi dibandingkan buah jeruk.",
+    "Paprika merupakan buah dari tanaman yang sama dengan cabai, namun tidak memiliki rasa pedas.",
+    "Warna paprika, mulai dari hijau, kuning, hingga merah, menunjukkan tingkat kematangannya."
+  ],
+  "Cabbage": [
+    "Kubis termasuk dalam keluarga tanaman yang sama dengan brokoli dan kembang kol, serta kaya akan serat dan vitamin K.",
+    "Kubis dapat disimpan cukup lama di lemari es karena lapisan daunnya yang rapat membantu menjaga kesegarannya.",
+    "Kubis merah mengandung pigmen yang bisa berubah warna tergantung tingkat keasaman, mulai dari merah, ungu, hingga biru."
+  ],
+  "Carrot": [
+    "Wortel kaya akan beta karoten, senyawa yang diubah tubuh menjadi vitamin A dan bermanfaat bagi kesehatan mata.",
+    "Wortel aslinya tidak selalu berwarna oranye; dulu ada juga wortel berwarna ungu dan putih.",
+    "Merebus wortel dapat membantu tubuh menyerap beta karoten di dalamnya lebih baik dibandingkan memakannya mentah."
+  ],
+  "Cauliflower": [
+    "Kembang kol termasuk sayuran keluarga kubis-kubisan yang kaya vitamin C dan serat, namun rendah kalori.",
+    "Kembang kol bisa diolah menjadi pengganti nasi atau tepung karena teksturnya yang mudah dihaluskan.",
+    "Kembang kol berwarna putih karena daunnya menutupi bagian bunganya dari sinar matahari saat tumbuh."
+  ],
+  "Chilli": [
+    "Cabai mengandung senyawa capsaicin yang menghasilkan rasa pedas dan sensasi hangat pada tubuh.",
+    "Semakin banyak biji dan bagian putih di dalam cabai, biasanya rasanya akan semakin pedas.",
+    "Cabai merupakan buah, meskipun sering dianggap sebagai bumbu dapur."
+  ],
+  "Corn": [
+    "Jagung merupakan sumber karbohidrat kompleks dan serat, serta mengandung antioksidan lutein yang baik untuk kesehatan mata.",
+    "Setiap tongkol jagung biasanya memiliki jumlah biji yang genap karena cara bunganya tumbuh berpasangan.",
+    "Rambut jagung yang halus sebenarnya adalah bagian dari bunga yang menghubungkan setiap biji jagung."
+  ],
+  "Cucumber": [
+    "Timun memiliki kandungan air sekitar 95 persen, sehingga baik untuk membantu menjaga tubuh tetap terhidrasi.",
+    "Timun termasuk dalam keluarga yang sama dengan melon dan semangka.",
+    "Kulit timun mengandung banyak serat dan nutrisi, sehingga sebaiknya tidak selalu dikupas."
+  ],
+  "eggplant": [
+    "Kulit terong berwarna ungu mengandung antioksidan bernama nasunin yang membantu melindungi sel-sel tubuh.",
+    "Terong termasuk buah, bukan sayuran, karena tumbuh dari bunga dan memiliki biji di dalamnya.",
+    "Terong memiliki banyak bentuk dan warna di berbagai negara, tidak hanya yang lonjong berwarna ungu."
+  ],
+  "Garlic": [
+    "Bawang putih mengandung senyawa allicin yang terbentuk saat dihaluskan atau dipotong, dan dikenal memiliki sifat antibakteri.",
+    "Bawang putih akan menghasilkan lebih banyak senyawa bermanfaat jika didiamkan sekitar 10 menit setelah dihaluskan sebelum dimasak.",
+    "Bawang putih telah digunakan manusia sebagai bumbu dapur sejak ribuan tahun lalu di berbagai belahan dunia."
+  ],
+  "Ginger": [
+    "Jahe secara turun-temurun digunakan untuk membantu meredakan mual dan memberikan sensasi hangat pada tubuh.",
+    "Jahe termasuk tanaman rimpang, yaitu bagian batang yang tumbuh dan membesar di dalam tanah, bukan akar.",
+    "Jahe sering ditambahkan ke dalam minuman hangat karena aromanya yang khas dan menyegarkan."
+  ],
+  "Lettuce": [
+    "Selada memiliki kandungan air yang tinggi dan rendah kalori, sehingga sering dijadikan bahan utama salad.",
+    "Selada mulai dibudidayakan manusia sejak ribuan tahun lalu, salah satunya di wilayah Mesir kuno.",
+    "Ada banyak jenis selada, mulai dari yang berdaun keriting hingga yang berbentuk bulat rapat seperti kubis."
+  ],
+  "Onion": [
+    "Bawang bombay mengandung senyawa sulfur yang dapat memicu keluarnya air mata saat dipotong akibat reaksi enzim di dalamnya.",
+    "Bawang bombay memiliki lapisan-lapisan karena strukturnya yang terdiri dari daun-daun yang menebal dan menumpuk.",
+    "Mendinginkan bawang bombay di lemari es sebelum memotongnya dapat membantu mengurangi rasa perih di mata."
+  ],
+  "Peas": [
+    "Kacang polong tergolong sebagai polong-polongan yang sering dianggap sayuran, dan merupakan sumber protein nabati serta serat yang baik.",
+    "Kacang polong termasuk sayuran yang bisa tumbuh baik di cuaca sejuk, berbeda dari banyak sayuran lain yang menyukai cuaca hangat.",
+    "Kacang polong muda yang masih di dalam polongnya sering disebut kapri dan bisa dimakan utuh bersama kulitnya."
+  ],
+  "Potato": [
+    "Kentang adalah sumber karbohidrat dan kalium yang baik, dengan sebagian besar kandungan vitamin C-nya berada tepat di bawah kulitnya.",
+    "Kentang termasuk tanaman umbi yang berasal dari daerah pegunungan Amerika Selatan.",
+    "Kentang sebaiknya disimpan di tempat gelap dan sejuk agar tidak cepat bertunas."
+  ],
+  "Turnip": [
+    "Turnip adalah sayuran umbi yang daunnya juga dapat dimakan, serta merupakan sumber vitamin C dan serat yang baik.",
+    "Turnip biasanya dipanen saat masih berukuran kecil karena rasanya akan lebih manis dan renyah.",
+    "Turnip dapat dimakan mentah, direbus, maupun dipanggang, tergantung selera."
+  ],
+  "Soybean": [
+    "Kedelai merupakan salah satu sumber protein nabati lengkap dan menjadi bahan dasar pembuatan tempe serta tahu.",
+    "Kedelai adalah salah satu tanaman tertua yang dibudidayakan manusia, dengan sejarah ribuan tahun di Asia.",
+    "Selain tempe dan tahu, kedelai juga bisa diolah menjadi susu kedelai dan kecap."
+  ],
+  "Spinach": [
+    "Bayam kaya akan zat besi dan vitamin K, serta termasuk salah satu sayuran hijau dengan kandungan nutrisi terpadat.",
+    "Bayam dapat tumbuh dengan cepat dan biasanya bisa dipanen hanya dalam beberapa minggu setelah ditanam.",
+    "Bayam populer dijadikan simbol kekuatan dalam budaya populer, seperti pada tokoh kartun Popeye."
+  ]
 }

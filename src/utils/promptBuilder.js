@@ -1,10 +1,13 @@
 import { TONE_PROMPTS, DEFAULT_TONE } from '../config/textModel.config.js';
 
 const INSTRUCTION =
-  'Kamu adalah asisten yang menulis ulang sebuah fakta sayuran ke dalam gaya bahasa tertentu. ' +
-  'Aturan penting: jangan menambahkan informasi baru, jangan mengubah makna atau angka yang sudah ' +
-  'ada, dan jangan mengulang kata atau frasa. Jawab HANYA dengan satu kalimat hasil tulis ulang, ' +
-  'tanpa basa-basi pembuka atau penutup.';
+  'Kamu adalah asisten yang menulis ulang SATU fakta sayuran ke dalam gaya bahasa tertentu, tanpa ' +
+  'mengubah isinya. Aturan yang wajib dipatuhi: ' +
+  '(1) Jangan menambahkan informasi, contoh, atau detail baru yang tidak ada di fakta asli. ' +
+  '(2) Jangan mengubah angka, satuan, atau nama yang sudah ada di fakta asli. ' +
+  '(3) Jangan mengulang kata atau frasa yang sama. ' +
+  '(4) Hanya gaya bahasa dan cara penyampaian yang boleh berubah, isinya harus tetap sama persis. ' +
+  'Jawab HANYA dengan satu kalimat hasil tulis ulang, tanpa basa-basi pembuka atau penutup.';
 
 /**
  * Builds the chat-formatted prompt sent to the text-generation model to

@@ -5,7 +5,9 @@ import facts from '../data/facts.json';
  *
  * This is the single source of truth for factual content in the app - the
  * language model is never allowed to invent facts, only restyle whatever
- * this class returns.
+ * this class returns. Each vegetable maps to several verified facts;
+ * getFact() picks one at random on every call, avoiding an immediate repeat
+ * of whichever fact it returned last for that same vegetable.
  */
 export class FactsRepository {
   constructor(factsData = facts) {
@@ -13,18 +15,41 @@ export class FactsRepository {
     // labels are capitalized except for "eggplant") never causes a missed
     // lookup between the classifier's output and the knowledge base.
     this.factsByLowercaseLabel = Object.fromEntries(
-      Object.entries(factsData).map(([label, fact]) => [label.toLowerCase(), fact]),
+      Object.entries(factsData).map(([label, factList]) => [label.toLowerCase(), factList]),
     );
+
+    // Remembers which fact index was returned last per label, so the very
+    // next pick for that same vegetable can skip it.
+    this.lastIndexByLowercaseLabel = {};
   }
 
-  /** Returns the verified fact for a label, or null if none exists. */
+  /**
+   * Returns a verified fact for a label, or null if the label has none.
+   * Picks randomly among that label's facts; if there's more than one, the
+   * fact just returned for that label is never picked twice in a row.
+   */
   getFact(vegetableLabel) {
     if (!vegetableLabel) return null;
-    return this.factsByLowercaseLabel[vegetableLabel.toLowerCase()] ?? null;
+
+    const key = vegetableLabel.toLowerCase();
+    const factList = this.factsByLowercaseLabel[key];
+    if (!factList || factList.length === 0) return null;
+    if (factList.length === 1) return factList[0];
+
+    const lastIndex = this.lastIndexByLowercaseLabel[key];
+    let nextIndex = lastIndex;
+    while (nextIndex === lastIndex) {
+      nextIndex = Math.floor(Math.random() * factList.length);
+    }
+
+    this.lastIndexByLowercaseLabel[key] = nextIndex;
+    return factList[nextIndex];
   }
 
-  /** True if the knowledge base has an entry for this label. */
+  /** True if the knowledge base has at least one fact for this label. */
   hasFact(vegetableLabel) {
-    return this.getFact(vegetableLabel) !== null;
+    if (!vegetableLabel) return false;
+    const factList = this.factsByLowercaseLabel[vegetableLabel.toLowerCase()];
+    return Array.isArray(factList) && factList.length > 0;
   }
 }

@@ -65,6 +65,28 @@ export const GENERATION_DEFAULTS = {
   do_sample: true,
 };
 
+/**
+ * Per-tone overrides merged on top of GENERATION_DEFAULTS (see
+ * getGenerationConfig below). Temperature is the lever that actually
+ * separates how literal vs. how freely-worded a tone reads: professional
+ * stays close to the model's safest continuation, funny/casual are allowed
+ * to sample more freely for livelier word choice. This is what lets tone
+ * differences come from configuration alone, with no tone-specific
+ * branching inside RootFactsService or TextGenerationClient.
+ */
+export const GENERATION_OVERRIDES_BY_TONE = {
+  normal: {},
+  professional: { temperature: 0.4 },
+  casual: { temperature: 0.7 },
+  funny: { temperature: 0.85 },
+};
+
+/** Resolves the generation parameters to use for a given tone. */
+export function getGenerationConfig(tone) {
+  const overrides = GENERATION_OVERRIDES_BY_TONE[tone] ?? {};
+  return { ...GENERATION_DEFAULTS, ...overrides };
+}
+
 /** How long we wait for a rewrite before falling back to the verified fact. */
 export const GENERATION_TIMEOUT_MS = 8000;
 
@@ -75,12 +97,26 @@ export const DEFAULT_TONE = TONE_CONFIG.defaultTone;
  * Natural-language instruction fragment per tone, used when building the
  * rewrite prompt. Keys MUST stay in sync with TONE_CONFIG.availableTones
  * in src/utils/config.js (that file defines which tones the UI offers).
+ *
+ * Each one names a concrete register and at least one concrete stylistic
+ * device (an opener, a comparison, a vocabulary choice) rather than a bare
+ * adjective - a small model follows "use an everyday comparison" far more
+ * reliably than it follows "be funny" alone. Every entry still ends by
+ * re-anchoring that only the delivery may change, not the content, so
+ * pushing the style harder doesn't loosen the anti-hallucination rule.
  */
 export const TONE_PROMPTS = {
-  normal: 'netral dan informatif',
-  funny: 'lucu dan ringan, boleh sedikit bercanda, tapi makna faktanya tidak boleh berubah',
-  professional: 'formal, seperti penjelasan ilmiah singkat',
-  casual: 'santai, seperti sedang mengobrol dengan teman',
+  normal:
+    'netral: satu kalimat informasi biasa yang lugas, tanpa gaya bahasa tambahan apa pun',
+  professional:
+    'seperti penjelasan guru IPA di depan kelas atau kalimat di buku pelajaran: gunakan istilah ' +
+    'yang tepat serta kalimat yang runtut dan berwibawa, tanpa basa-basi santai atau candaan',
+  casual:
+    'seperti sedang cerita ke teman dekat: gunakan kata sehari-hari, boleh dibuka dengan sapaan ' +
+    'santai seperti "Eh, tau nggak..." atau "Btw...", tetap satu kalimat yang isinya sama persis',
+  funny:
+    'seperti bercanda dengan teman: bandingkan faktanya dengan hal receh sehari-hari yang tidak ' +
+    'terduga, boleh pakai tanda seru atau ekspresi berlebihan, tapi isinya tidak boleh berubah',
 };
 
 /** True if `tone` has a matching prompt instruction defined above. */

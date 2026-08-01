@@ -20,6 +20,10 @@ function App() {
   const isRunningRef = useRef(false);
   const detectionCleanupRef = useRef(null);
   const copyFeedbackTimeoutRef = useRef(null);
+  // Tracks how many consecutive ticks have agreed on the same class, so a
+  // single unstable/transitional frame (e.g. mid-pan across several
+  // vegetables) can't trigger a result on its own - see runDetectionTick.
+  const detectionConsensusRef = useRef({ className: null, count: 0 });
 
   // Create the three services once and load the vision model up front - it
   // gates the scan button (see CameraSection's isModelReady check). The
@@ -88,6 +92,12 @@ function App() {
    * setInterval so the next tick is only ever scheduled after the current
    * prediction finishes - that alone prevents overlapping/concurrent
    * predictions, without needing a separate lock flag.
+   *
+   * A per-frame valid result isn't acted on immediately - it first has to
+   * repeat for detectionConsensusCount consecutive ticks (prediction
+   * smoothing). This filters out one-off unstable frames, such as a frame
+   * grabbed mid-pan across several vegetables, without needing to touch
+   * DetectionService's single-frame contract.
    */
   async function runDetectionTick() {
     if (!isRunningRef.current) return;
@@ -104,8 +114,18 @@ function App() {
       if (!isRunningRef.current) return;
 
       if (result.isValid) {
-        await handleValidDetection(result);
-        return;
+        const consensus = detectionConsensusRef.current;
+        detectionConsensusRef.current =
+          consensus.className === result.className
+            ? { className: consensus.className, count: consensus.count + 1 }
+            : { className: result.className, count: 1 };
+
+        if (detectionConsensusRef.current.count >= APP_CONFIG.detectionConsensusCount) {
+          await handleValidDetection(result);
+          return;
+        }
+      } else {
+        detectionConsensusRef.current = { className: null, count: 0 };
       }
     } catch (error) {
       // A single failed frame must never crash the loop - log it and keep polling.
@@ -160,6 +180,7 @@ function App() {
 
     actions.resetResults();
     setIsCopied(false);
+    detectionConsensusRef.current = { className: null, count: 0 };
 
     try {
       await state.services.camera.startCamera(cameraType);
