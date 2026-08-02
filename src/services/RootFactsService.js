@@ -8,12 +8,41 @@ import {
   TEXT_MODEL_BACKEND_PREFERENCE,
   GENERATION_DEFAULTS,
   GENERATION_TIMEOUT_MS,
+  MODEL_LOAD_TIMEOUT_MS,
   DEFAULT_TONE,
   isValidTone,
 } from '../config/textModel.config.js';
 
 /** Maximum character length a generation is allowed before it's treated as unusable. */
 const MAX_GENERATION_LENGTH = 400;
+
+/**
+ * Words/phrases that mean the model drifted out of "state one fact" mode:
+ * chat-role labels leaking out of the instruction prompt ("assistant",
+ * "system", "user"), a conversational opener ("hello", "sure") or the model
+ * talking about itself ("as an ai"). Any of these makes the output unusable
+ * regardless of the rest of the sentence.
+ *
+ * Matched on word boundaries, not as bare substrings, so ordinary words
+ * that merely contain one of these (e.g. "measure", "pressure") are not
+ * rejected - the check targets the actual word.
+ */
+const REJECTED_PATTERN = /\b(assistant|system|user|hello|sure|as an ai)\b/i;
+
+/**
+ * Backstop for the category confabulation this model is prone to - putting
+ * the vegetable in the wrong kingdom entirely ("Carrots are a popular
+ * animal", "Cabbage is a popular video game"). promptBuilder.js pins the
+ * category positively, which is the primary fix; this only catches what
+ * slips through.
+ *
+ * Deliberately a short list of category words, not a topic filter. It can
+ * only ever reject wholesale, so every entry added is a legitimate fact it
+ * might also throw away ("...unlike fish, spinach..."), and a long list
+ * would reject more good output than bad. `games?` covers "video game"
+ * on its own.
+ */
+const WRONG_CATEGORY_PATTERN = /\b(animals?|dogs?|cats?|birds?|fish|games?)\b/i;
 
 /**
  * Turns a detected vegetable label directly into the fun fact shown to the
@@ -55,21 +84,26 @@ export class RootFactsService {
    * load is already in flight all await that same load rather than one of
    * them resolving early before it's actually done.
    *
-   * Deliberately UNBOUNDED (no timeout): model loading is one-time
-   * initialization, not inference, so it's allowed to run to completion
-   * rather than being raced against a clock. This used to be wrapped in
-   * withTimeout(), which caused a real bug: when a load happened to take
-   * longer than the timeout, the race settled and _loadModelPromise/
-   * isModelLoaded reset to "not loaded" while the real pipeline() call kept
-   * running unseen in the background. The next detection then saw no
-   * load in flight and started a SECOND TextGenerationClient/pipeline()
-   * call, competing with the first for bandwidth and CPU (and leaking the
-   * first one's ONNX session, never disposed) - visible in practice as
-   * _loadModelInternal's call count climbing past 1 and the model never
-   * finishing a clean download into transformers.js's cache. Removing the
-   * race means _loadModelPromise now tracks the REAL load() promise end to
-   * end, so every caller - concurrent or sequential retries alike - always
-   * joins the one true in-flight (or already-finished) load.
+   * Bounded by MODEL_LOAD_TIMEOUT_MS, but ONLY on the caller's side of the
+   * await. This distinction is the whole design of this method, and getting
+   * it wrong caused a real bug once: the timeout used to wrap the promise
+   * stored in _loadModelPromise, so when a load ran long, the race settled
+   * and _loadModelPromise/isModelLoaded reset to "not loaded" while the real
+   * pipeline() call kept running unseen in the background. The next
+   * detection then saw no load in flight and started a SECOND
+   * TextGenerationClient/pipeline() call, competing with the first for
+   * bandwidth and CPU (and leaking the first one's ONNX session, never
+   * disposed) - visible in practice as _loadModelInternal's call count
+   * climbing past 1 and the model never finishing a clean download into
+   * transformers.js's cache.
+   *
+   * So _loadModelPromise still tracks the REAL load promise end to end and
+   * is cleared only when that real load settles; withTimeout() is applied to
+   * a separate race that merely stops THIS call from waiting any longer.
+   * A timed-out caller therefore gives up while the download keeps going,
+   * and the next caller re-joins that same in-flight load instead of
+   * starting a competing one - so a slow network costs the user one error
+   * state, not a restarted download.
    *
    * Deliberately does NOT set any permanent "give up" flag on failure: a
    * genuine network error or no working backend is caught and logged here,
@@ -84,15 +118,22 @@ export class RootFactsService {
   async loadModel() {
     if (this.isModelLoaded) return;
 
-    if (this._loadModelPromise) {
-      return this._loadModelPromise;
+    if (!this._loadModelPromise) {
+      this._loadModelPromise = this._loadModelInternal().finally(() => {
+        this._loadModelPromise = null;
+      });
     }
 
-    this._loadModelPromise = this._loadModelInternal().finally(() => {
-      this._loadModelPromise = null;
-    });
-
-    return this._loadModelPromise;
+    // Raced, but never assigned back to _loadModelPromise (see above), so a
+    // timeout here abandons the wait without abandoning the load. Caught
+    // rather than rethrown to keep loadModel()'s existing contract: it
+    // never throws, it just leaves isModelLoaded false for the caller to
+    // check - which generateFacts() already does on the next line.
+    try {
+      await withTimeout(this._loadModelPromise, MODEL_LOAD_TIMEOUT_MS);
+    } catch (error) {
+      logError('RootFactsService.loadModel', error);
+    }
   }
 
   async _loadModelInternal() {
@@ -195,7 +236,7 @@ export class RootFactsService {
       const generated = await withTimeout(generationPromise, GENERATION_TIMEOUT_MS);
 
       const validateStart = performance.now();
-      const usable = this._isUsableGeneration(generated);
+      const usable = this._isUsableGeneration(generated, vegetableLabel);
       console.log(`[PERF] Post process - validation (usability check): ${(performance.now() - validateStart).toFixed(1)} ms`);
 
       logTotal(usable ? 'success' : 'unusable output rejected');
@@ -209,32 +250,63 @@ export class RootFactsService {
 
   async _generateFact(vegetableLabel, tone) {
     const promptBuildStart = performance.now();
-    const messages = buildFunFactPrompt(vegetableLabel, tone);
+    const prompt = buildFunFactPrompt(vegetableLabel, tone);
     console.log(`[PERF] Prompt build: ${(performance.now() - promptBuildStart).toFixed(1)} ms`);
 
-    console.log('[DEBUG 3] Full prompt/messages sent to TextGenerationClient:', JSON.stringify(messages, null, 2));
-    const result = await this.textClient.generate(messages, GENERATION_DEFAULTS);
+    console.log('[DEBUG 3] Full instruction prompt sent to TextGenerationClient:', JSON.stringify(prompt));
+    const result = await this.textClient.generate(prompt, GENERATION_DEFAULTS);
     console.log('[DEBUG 6] Final extracted text returned by TextGenerationClient:', JSON.stringify(result));
     return result;
   }
 
   /**
-   * Cheap guard against obviously broken output (empty, a runaway wall of
-   * repeated text, or a sentence cut off mid-thought) from a small model.
-   * This is not a fact-checker or a rewriter - it only accepts or rejects
-   * the text wholesale, never edits it. The trailing-punctuation check
-   * specifically catches generations that hit max_new_tokens before
-   * reaching a natural stopping point: that reads as a broken app to the
-   * user, so it's treated the same as any other generation failure (falls
-   * back to the existing error state) rather than being shown truncated.
+   * Cheap guard against obviously broken or off-task output from a small
+   * model. This is not a fact-checker or a rewriter - it only accepts or
+   * rejects the text wholesale, never edits it.
+   *
+   * Four checks, cheapest first:
+   *  1. empty / runaway wall of repeated text,
+   *  2. cut off mid-thought - no sentence-ending punctuation, which catches
+   *     generations that hit max_new_tokens before reaching a natural stop,
+   *  3. chat-role leakage or conversational filler (REJECTED_PATTERN),
+   *  4. the vegetable placed in the wrong category entirely - an animal, a
+   *     game (WRONG_CATEGORY_PATTERN),
+   *  5. the answer must actually be ABOUT the detected vegetable, i.e. it
+   *     has to mention it by name. A small model asked about "Carrot" can
+   *     happily produce a fact about something else entirely, and that is
+   *     invisible to every other check here.
+   *
+   * A rejected generation is treated the same as any other generation
+   * failure: generateFacts() returns null and the caller shows its error
+   * state, rather than displaying broken or off-topic text.
    */
-  _isUsableGeneration(text) {
+  _isUsableGeneration(text, vegetableLabel) {
     if (typeof text !== 'string') return false;
 
     const trimmed = text.trim();
     if (trimmed.length === 0 || trimmed.length >= MAX_GENERATION_LENGTH) return false;
 
-    return /[.!?]$/.test(trimmed);
+    if (!/[.!?]$/.test(trimmed)) return false;
+
+    if (REJECTED_PATTERN.test(trimmed)) return false;
+
+    if (WRONG_CATEGORY_PATTERN.test(trimmed)) return false;
+
+    return this._mentionsVegetable(trimmed, vegetableLabel);
+  }
+
+  /**
+   * True if `text` names `vegetableLabel`. Compared lowercased, with a
+   * single trailing "s" stripped off the label, so a plural answer still
+   * counts ("Peas" -> "pea", which matches "Peas are..." and "a pea pod").
+   * An empty/missing label can't be checked, so it isn't treated as a
+   * failure here - generateFacts() already rejects those before generating.
+   */
+  _mentionsVegetable(text, vegetableLabel) {
+    const label = String(vegetableLabel ?? '').trim().toLowerCase();
+    if (label.length === 0) return true;
+
+    return text.toLowerCase().includes(label.replace(/s$/, ''));
   }
 
   /** Releases the loaded model's resources, if any. */

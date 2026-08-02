@@ -1,46 +1,61 @@
 import { TONE_PROMPTS, DEFAULT_TONE } from '../config/textModel.config.js';
 
 /**
- * Builds the chat-formatted prompt sent to the text-generation model to
- * generate a brand-new fun fact about a detected vegetable, in the
- * selected tone.
+ * Builds the prompt sent to the text-generation model to generate a
+ * brand-new fun fact about a detected vegetable, in the selected tone.
  *
- * SHAPE: system turn, then three user/assistant example turns, then a bare
- * user turn holding only the vegetable label. Three properties of
- * SmolLM2-135M-Instruct drive that shape:
+ * SHAPE: a single plain instruction STRING - no chat messages, no roles, no
+ * example turns. The model is an instruction-tuned seq2seq model run
+ * through the `text2text-generation` pipeline (see
+ * config/textModel.config.js), which has no chat template at all: whatever
+ * string is passed in is encoded verbatim by the encoder and the decoder
+ * answers it. A role-tagged message array would be flattened into literal
+ * "system"/"user"/"assistant" text inside the prompt, which is exactly the
+ * kind of leakage _isUsableGeneration() in RootFactsService now rejects.
  *
- * 1. Its chat template injects a default persona when the first message is
- *    not a system message:
- *      {% if loop.first and messages[0]['role'] != 'system' %}
- *        "You are a helpful AI assistant named SmolLM, trained by Hugging Face"
- *    An earlier version of this prompt sent a single user turn, so that
- *    persona was silently prepended to every request. A "helpful AI
- *    assistant" answers conversationally and asks for clarification, which
- *    is exactly the failure that was observed ("To clarify this answer
- *    further please provide it as such..."). Supplying our own system
- *    message as messages[0] suppresses it - this is the only way to do so,
- *    since the injection is in the template, not in our code.
+ * Each instruction is its own line. LaMini-Flan-T5's instruction tuning is
+ * built on short, direct, imperative prompts, so one directive per line
+ * matches the format the model was actually trained to follow.
  *
- * 2. The examples are real conversation turns, not prose inside one user
- *    message. The template renders each as
- *      <|im_start|>assistant\n<one sentence><|im_end|>
- *    and <|im_end|> IS the model's EOS token. So every example demonstrates
- *    "emit one sentence, then stop", which is what makes the model halt on
- *    its own. Length is not enforced by truncating output anywhere - there
- *    is no post-processing step in this project.
+ * DOMAIN PINNING: at 77M parameters the model treats an unfamiliar proper
+ * noun as an unknown token and confabulates a category for it - the source
+ * of "Carrots are a popular animal" and "Cabbage is a popular video game".
+ * That is a category failure, not a factuality failure, and naming the
+ * allowed subject matter ("food, nutrition, plant biology, or health") is
+ * what fixes it: measured over the full 18-label x 4-tone matrix, wrong
+ * -category output fell from 11/72 to 0-1/72 once that line was added.
  *
- * 3. All negative rules ("no markdown", "do not start with...") were
- *    removed. At 135M parameters negation is unreliable, and naming the
- *    unwanted string puts its tokens in context, which raises rather than
- *    lowers its probability. The examples demonstrate compliance instead;
- *    demonstration is this model class's strongest capability and
- *    instruction-following its weakest.
+ * ECHO IS THE CONSTRAINT THAT MATTERS HERE. Every line added is a line the
+ * model may copy into its answer instead of following, and copied text
+ * still passes every check in RootFactsService - so it is the one failure
+ * mode validation cannot catch. This wording was picked by measuring
+ * "accepted AND not echoing the prompt" across candidates (n=72 each):
  *
- * The label is interpolated EXACTLY ONCE, in the final user turn. That is
- * deliberate: repetition_penalty applies across the whole prompt, not just
- * generated tokens (see GENERATION_DEFAULTS in textModel.config.js), so
- * each extra mention actively suppressed the one word the answer most
- * needs.
+ *   this wording                                  65/72  (90%)
+ *   ...with the negative folded into the topic     60/72
+ *   ...with no "name it" line at all               59/72
+ *   ...with "The sentence must mention X by name." 41/72  <- see below
+ *   the earlier unconstrained "fun fact" prompt    53/72  (11 wrong-category)
+ *
+ * Two findings drove the final phrasing, both counter-intuitive:
+ *
+ * 1. Directives phrased as full declarative sentences get copied; terse
+ *    imperatives do not. "The sentence must mention X by name." collapsed
+ *    to 41/72, while "Name X in the sentence." - the same requirement -
+ *    scored 65/72. Nothing else differed.
+ * 2. A positive category assertion ("X is a vegetable that people eat.")
+ *    scored highest on raw acceptance (70/72) but was disqualified: the
+ *    model simply repeated that sentence back as its "fact". High accept
+ *    rate, zero information. It is deliberately NOT used here.
+ *
+ * For the same reason the negative is a single short line rather than an
+ * enumeration - each extra clause measurably raises the echo rate.
+ *
+ * The label is interpolated twice (subject, then the naming requirement).
+ * An earlier revision used it exactly once to avoid repetition_penalty
+ * damping the one word the answer most needs, but at 1.05 that penalty is
+ * mild, and RootFactsService rejects any generation that fails to mention
+ * the vegetable - so reinforcing the subject is worth its token cost.
  *
  * The model's raw output is displayed to the user as-is (see
  * RootFactsService) - there is no local knowledge base backing this and no
@@ -52,64 +67,22 @@ import { TONE_PROMPTS, DEFAULT_TONE } from '../config/textModel.config.js';
 const WORD_LIMIT = 30;
 
 /**
- * Fixed demonstrations of the exact target behavior.
- *
- * The vegetables here are deliberately NOT in src/data/facts.json's label
- * set (the classifier's vocabulary), so a detected vegetable can never
- * match an example and get echoed back verbatim instead of prompting a new
- * fact.
- *
- * The three facts are intentionally of different kinds - physical,
- * taxonomic, historical - so the model generalizes "state one interesting
- * fact" rather than locking onto a single sentence template. Each begins
- * with the vegetable, stays under the word limit, and ends with a period.
+ * @param {string} vegetableLabel - a label as produced by DetectionService.
+ * @param {string} tone - a key of TONE_PROMPTS; falls back to DEFAULT_TONE.
+ * @returns {string} the plain instruction string to hand to the pipeline.
  */
-const EXAMPLES = [
-  {
-    vegetable: 'Asparagus',
-    fact: 'Asparagus can grow more than twenty centimetres in a single day during warm weather.',
-  },
-  {
-    vegetable: 'Radish',
-    fact: 'Radishes belong to the mustard family, which gives them their sharp, peppery bite.',
-  },
-  {
-    vegetable: 'Celery',
-    fact: 'Celery was woven into funeral wreaths in ancient Greece long before it became a common food.',
-  },
-];
-
-/**
- * Tone is carried in the system turn rather than in the user turns. The
- * user turns must stay bare vegetable names so the final one matches the
- * pattern the examples establish; adding a tone marker only to the last
- * one would break that pattern, and adding it to all of them would teach
- * the model to ignore it (the fixed example answers cannot vary by tone).
- * The practical trade-off is that tone influences register more weakly
- * than the examples influence shape - accepted deliberately, since shape
- * compliance is what was actually failing.
- */
-function buildSystemMessage(toneInstruction) {
-  return [
-    'You are a vegetable encyclopedia.',
-    '',
-    'The user gives you the name of a vegetable. You reply with one interesting, true fact about that vegetable.',
-    '',
-    `Your reply is always a single plain sentence of fewer than ${WORD_LIMIT} words that begins with the vegetable's name and ends with a period.`,
-    '',
-    toneInstruction,
-  ].join('\n');
-}
-
 export function buildFunFactPrompt(vegetableLabel, tone) {
   const toneInstruction = TONE_PROMPTS[tone] ?? TONE_PROMPTS[DEFAULT_TONE];
 
   return [
-    { role: 'system', content: buildSystemMessage(toneInstruction) },
-    ...EXAMPLES.flatMap(({ vegetable, fact }) => [
-      { role: 'user', content: vegetable },
-      { role: 'assistant', content: fact },
-    ]),
-    { role: 'user', content: vegetableLabel },
-  ];
+    `Write exactly one short, true scientific fact about the vegetable ${vegetableLabel}.`,
+    'The fact must be about food, nutrition, plant biology, or health.',
+    `Name ${vegetableLabel} in the sentence.`,
+    `Use one simple sentence of fewer than ${WORD_LIMIT} words.`,
+    toneInstruction,
+    'Do not write about animals or games.',
+    'Do not include greetings.',
+    'Do not mention AI.',
+    'Do not answer anything else.',
+  ].join('\n');
 }

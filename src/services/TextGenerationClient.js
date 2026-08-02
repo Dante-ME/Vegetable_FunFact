@@ -2,7 +2,7 @@ import { filterSupportedBackends, selectFirstWorkingBackend } from '../utils/com
 
 /**
  * Thin wrapper around a single Transformers.js text-generation pipeline
- * (a decoder-only, chat-formatted instruct model - see
+ * (a seq2seq instruction model driven by a plain instruction string - see
  * config/textModel.config.js for which one).
  *
  * This is the only file in the codebase that uses `@huggingface/transformers`.
@@ -100,10 +100,10 @@ export class TextGenerationClient {
   }
 
   /**
-   * Runs the loaded pipeline on a chat-formatted `messages` array and
-   * returns only the generated reply as a plain string.
+   * Runs the loaded pipeline on a plain instruction string and returns the
+   * generated answer as a plain string.
    */
-  async generate(messages, generationOptions) {
+  async generate(prompt, generationOptions) {
     if (!this.pipelineInstance) {
       throw new Error('TextGenerationClient: generate() called before load().');
     }
@@ -114,10 +114,10 @@ export class TextGenerationClient {
     // calls is direct proof of reuse (not an inference from behavior).
     console.log(`[PERF] Pipeline instance id (used for this generation): ${this._pipelineInstanceId}`);
 
-    console.log('[DEBUG 4] Messages object handed directly to the transformers.js pipeline call:', JSON.stringify(messages, null, 2));
+    console.log('[DEBUG 4] Instruction string handed directly to the transformers.js pipeline call:', JSON.stringify(prompt));
 
     const genStart = performance.now();
-    const output = await this.pipelineInstance(messages, generationOptions);
+    const output = await this.pipelineInstance(prompt, generationOptions);
     const genEnd = performance.now();
     console.log(`[PERF] Model generation (await generator(...) only): ${(genEnd - genStart).toFixed(1)} ms`);
 
@@ -132,15 +132,19 @@ export class TextGenerationClient {
   }
 
   /**
-   * transformers.js text-generation pipelines return an array whose
-   * `generated_text` is either a plain string, or (for chat-formatted
-   * input, as used here) the full conversation array - the model's reply
-   * is the last entry in that array.
+   * transformers.js text2text-generation pipelines return an array whose
+   * `generated_text` is a plain string holding only the decoder's answer -
+   * unlike decoder-only text-generation, the prompt is NOT echoed back, so
+   * nothing has to be stripped off the front here.
+   *
+   * The array branch is kept as a defensive fallback for a chat-shaped
+   * return value, so this stays correct if the configured model/task is
+   * ever switched back.
    */
   _extractGeneratedText(output) {
     const result = Array.isArray(output) ? output[0] : output;
     const generatedText = result?.generated_text;
-    console.log('[DEBUG 6a] result.generated_text field shape (array = chat turns, string = plain):', generatedText);
+    console.log('[DEBUG 6a] result.generated_text field shape (string = plain, array = chat turns):', generatedText);
 
     if (Array.isArray(generatedText)) {
       const lastTurn = generatedText[generatedText.length - 1];
