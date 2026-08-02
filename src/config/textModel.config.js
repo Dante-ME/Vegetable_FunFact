@@ -1,133 +1,144 @@
 import { TONE_CONFIG } from '../utils/config.js';
 
 /**
- * Single source of truth for which text-generation model RootFactsService
+ * Single source of truth for the text-generation model RootFactsService
  * uses to generate a fun fact directly from a detected vegetable label.
  *
- * To swap models (e.g. Gemma 3 270M -> Qwen2.5 0.5B, or any future model),
- * change ACTIVE_TEXT_MODEL_KEY below to another key from TEXT_MODEL_REGISTRY.
- * No other file needs to change - RootFactsService and TextGenerationClient
- * only ever read the *active* entry, never a hardcoded model id.
+ * To swap to a different decoder-only chat-formatted model, change
+ * TEXT_MODEL_ID/TEXT_MODEL_DTYPE_BY_BACKEND below - RootFactsService and
+ * TextGenerationClient never reference a specific model id, so that alone
+ * is a config-only change. Swapping to a text2text-generation (T5-family)
+ * model instead would be a bigger change: that pipeline type takes a plain
+ * instruction string, not a chat-message array, so promptBuilder.js and
+ * TextGenerationClient's generate() would need to change too - this
+ * project briefly used one (Xenova/LaMini-Flan-T5-77M) and reverted after
+ * real-world testing showed unreliable instruction-following (prompt
+ * leakage, ignoring the detected vegetable).
  */
+/**
+ * Model id, resolved against TEXT_MODEL_HOST below - NOT a Hugging Face
+ * repo id any more. It stays repo-id-shaped on purpose: transformers.js
+ * validates this string with isValidHfModelId() (utils/hub.js) and aborts
+ * before any network request if it fails, so a bare folder name works but a
+ * full URL does not. Note that rules out "--" anywhere in the name.
+ */
+export const TEXT_MODEL_ID = 'SmolLM2-135M-Instruct';
+export const TEXT_MODEL_TASK = 'text-generation';
+
+/**
+ * Where the model weights are actually fetched from.
+ *
+ * Hugging Face is deliberately NOT used at runtime: measured throughput
+ * from their CDN was ~150-170 KB/s for this project, confirmed both
+ * in-browser and with curl, which made a ~118MB download the single
+ * dominant cost of the whole detection-to-display flow. That is a delivery
+ * problem, not a model problem, so it is solved at the delivery layer by
+ * serving the exact same files from our own static host.
+ *
+ * Defaults to '/models/' - same-origin, i.e. whatever host is serving the
+ * app. `npm run fetch-model` populates public/models/ for local dev, so the
+ * default works with no configuration and no external account.
+ *
+ * Set VITE_MODEL_HOST at build time to serve from a CDN instead, e.g.
+ * VITE_MODEL_HOST=https://models.example.com/. Must end with a slash.
+ */
+export const TEXT_MODEL_HOST = import.meta.env.VITE_MODEL_HOST || '/models/';
+
+/**
+ * Appended to TEXT_MODEL_HOST to locate a model's directory. transformers.js
+ * defaults this to '{model}/resolve/{revision}/', which is Hugging Face's
+ * URL layout; a plain static host has no /resolve/ segment, so it is
+ * flattened to just the model folder. Final URL shape:
+ *   <host><model>/<file>   e.g. /models/SmolLM2-135M-Instruct/config.json
+ */
+export const TEXT_MODEL_PATH_TEMPLATE = '{model}/';
+
 // dtypeByBackend lets each candidate backend load the ONNX weight variant
 // that actually suits it - q4f16's fp16 activations are tuned for WebGPU's
 // compute shaders, while the WASM/CPU fallback uses plain q4 instead, which
-// is the more broadly-supported quantization there.
-export const TEXT_MODEL_REGISTRY = {
-  'gemma3-270m': {
-    label: 'Gemma 3 270M Instruct (ONNX)',
-    modelId: 'onnx-community/gemma-3-270m-it-ONNX',
-    task: 'text-generation',
-    dtypeByBackend: {
-      webgpu: 'q4f16',
-      wasm: 'q4',
-    },
-  },
-  'qwen2.5-0.5b': {
-    label: 'Qwen2.5 0.5B Instruct (ONNX)',
-    modelId: 'onnx-community/Qwen2.5-0.5B-Instruct',
-    task: 'text-generation',
-    dtypeByBackend: {
-      webgpu: 'q4f16',
-      wasm: 'q4',
-    },
-  },
+// is the more broadly-supported quantization there. Unlike the T5 model
+// this project briefly used, SmolLM2 is decoder-only, not seq2seq, so it
+// isn't affected by the WebGPU q8-seq2seq-decoder bug that forced WASM-only
+// there - both backends are safe to offer here.
+//
+// q4f16-on-WebGPU is specifically why this project is no longer on
+// gemma-3-270m-it: that export overflows in fp16 under ONNX Runtime Web and
+// emits repeated <unused56> filler instead of text (microsoft/onnxruntime
+// issue #26732), so its only fast browser path was numerically broken.
+// SmolLM2 is a LlamaForCausalLM export, which is the most heavily exercised
+// architecture on this runtime, so q4f16 here is the mainstream path rather
+// than a lightly-tested one.
+export const TEXT_MODEL_DTYPE_BY_BACKEND = {
+  webgpu: 'q4f16',
+  wasm: 'q4',
 };
 
-/** The only line that needs to change to switch the active text model. */
-export const ACTIVE_TEXT_MODEL_KEY = 'gemma3-270m';
-
-/** Resolves the full config object for the currently active model. */
-export function getActiveTextModelConfig() {
-  const modelConfig = TEXT_MODEL_REGISTRY[ACTIVE_TEXT_MODEL_KEY];
-
-  if (!modelConfig) {
-    throw new Error(
-      `textModel.config.js: "${ACTIVE_TEXT_MODEL_KEY}" is not a known entry in TEXT_MODEL_REGISTRY.`,
-    );
-  }
-
-  return modelConfig;
-}
-
-/**
- * Backend order to attempt when loading the model, best first.
- * TextGenerationClient falls back to the next entry if one fails to load.
- */
-export const BACKEND_PREFERENCE = ['webgpu', 'wasm'];
-
-/**
- * Default generation parameters for the fun-fact generation call.
- *
- * Kept deliberately conservative: this text is displayed to the user
- * verbatim with no rewriting step afterward, so temperature and top_p stay
- * low enough to keep the model close to its most likely, on-topic
- * continuation rather than wandering into unrelated or invented content.
- */
-export const GENERATION_DEFAULTS = {
-  max_new_tokens: 70,
-  temperature: 0.5,
-  top_p: 0.9,
-  repetition_penalty: 1.3,
-  no_repeat_ngram_size: 3,
-  do_sample: true,
-};
-
-/**
- * Per-tone overrides merged on top of GENERATION_DEFAULTS (see
- * getGenerationConfig below). Temperature is the lever that actually
- * separates how literal vs. how freely-worded a tone reads: professional
- * stays closest to the model's safest continuation, funny is allowed the
- * most room for livelier word choice - but every value here stays inside a
- * conservative band, never approaching the kind of high temperature that
- * would risk drifting off-topic. This is what lets tone differences come
- * from configuration alone, with no tone-specific branching inside
- * RootFactsService or TextGenerationClient.
- */
-export const GENERATION_OVERRIDES_BY_TONE = {
-  normal: {},
-  professional: { temperature: 0.3 },
-  casual: { temperature: 0.55 },
-  funny: { temperature: 0.7 },
-};
-
-/** Resolves the generation parameters to use for a given tone. */
-export function getGenerationConfig(tone) {
-  const overrides = GENERATION_OVERRIDES_BY_TONE[tone] ?? {};
-  return { ...GENERATION_DEFAULTS, ...overrides };
-}
+export const TEXT_MODEL_BACKEND_PREFERENCE = ['webgpu', 'wasm'];
 
 /** How long we wait for a generation before giving up and reporting failure. */
-export const GENERATION_TIMEOUT_MS = 8000;
+export const GENERATION_TIMEOUT_MS = 6000;
+
+/**
+ * How long we wait for the text-generation model itself to download and
+ * initialize before giving up. Deliberately left at the value tuned for the
+ * previous, much larger model: this one's q4f16 weights are ~118MB (vs
+ * ~273MB before) and ship as a single .onnx file rather than a small graph
+ * plus a separate multi-hundred-MB .onnx_data blob, so the same budget is
+ * now generous headroom rather than a tight fit. generateFacts() awaits
+ * this directly, so an unbounded wait here would hang the whole
+ * detection-to-display flow.
+ */
+export const MODEL_LOAD_TIMEOUT_MS = 60000;
+
+/**
+ * Generation parameters for the fun-fact generation call.
+ *
+ * do_sample is true with a low temperature and top_p - deliberately NOT
+ * pure greedy decoding. Greedy decoding was tried with the previous (T5)
+ * model and had a real, observed cost: when a small model has any bias
+ * toward a specific wrong output (there, generating "Soybean" regardless
+ * of the actual detected vegetable), greedy decoding locks that bias in
+ * deterministically on every single call, since there is no randomness to
+ * ever escape it. A low temperature keeps generation close to the model's
+ * most confident, safest continuation - serving "factual output" and
+ * "reduced hallucination" - while still being genuine sampling rather than
+ * one fixed path, which is "deterministic enough" (consistent almost all
+ * of the time) rather than perfectly deterministic (identically wrong
+ * every time, if the model is ever wrong). top_p additionally restricts
+ * sampling to the model's high-confidence tokens only, so the small amount
+ * of randomness introduced can't wander into a rare, potentially
+ * fabricated continuation. repetition_penalty/no_repeat_ngram_size stay on
+ * regardless of decoding strategy - they guard against a different failure
+ * mode (degenerate repetition loops) that both greedy and sampled decoding
+ * are prone to.
+ */
+export const GENERATION_DEFAULTS = {
+  max_new_tokens: 48,
+  do_sample: true,
+  temperature: 0.3,
+  top_p: 0.85,
+  repetition_penalty: 1.3,
+  no_repeat_ngram_size: 3,
+};
 
 /** Falls back to this tone if an unknown/unset tone value is requested. */
 export const DEFAULT_TONE = TONE_CONFIG.defaultTone;
 
 /**
- * Natural-language instruction fragment per tone, used when building the
- * generation prompt. Keys MUST stay in sync with TONE_CONFIG.availableTones
- * in src/utils/config.js (that file defines which tones the UI offers).
+ * English instruction fragment per tone, used when building the generation
+ * prompt. Keys MUST stay in sync with TONE_CONFIG.availableTones in
+ * src/utils/config.js (that file defines which tones the UI offers).
  *
- * Each one names a concrete register and at least one concrete stylistic
- * device (an opener, a comparison, a vocabulary choice) rather than a bare
- * adjective - a small model follows "use an everyday comparison" far more
- * reliably than it follows "be funny" alone. Content-preservation rules
- * (don't invent facts, stay on topic) live in the base prompt instead of
- * here, since there's no longer an "original" per tone to protect - only
- * the writing style is this file's concern.
+ * Kept in English deliberately. SmolLM2's model card states it "primarily
+ * understands and generates content in English", so English is not just the
+ * language the target outputs for this prompt redesign were written in - it
+ * is also the language this model is actually strongest in.
  */
 export const TONE_PROMPTS = {
-  normal:
-    'netral: satu kalimat informasi biasa yang lugas, tanpa gaya bahasa tambahan apa pun',
-  professional:
-    'seperti penjelasan guru IPA di depan kelas atau kalimat di buku pelajaran: gunakan istilah ' +
-    'yang tepat serta kalimat yang runtut dan berwibawa, tanpa basa-basi santai atau candaan',
-  casual:
-    'seperti sedang cerita ke teman dekat: gunakan kata sehari-hari, boleh dibuka dengan sapaan ' +
-    'santai seperti "Eh, tau nggak..." atau "Btw..."',
-  funny:
-    'seperti bercanda dengan teman: boleh bandingkan faktanya dengan hal receh sehari-hari yang ' +
-    'tidak terduga, boleh pakai tanda seru atau ekspresi berlebihan',
+  normal: 'Write in a plain, neutral, informative tone.',
+  professional: 'Write like a brief, formal science-textbook explanation.',
+  casual: 'Write like you are casually telling a friend, using everyday language.',
+  funny: 'Write in a playful, lighthearted tone, with a fun comparison.',
 };
 
 /** True if `tone` has a matching prompt instruction defined above. */

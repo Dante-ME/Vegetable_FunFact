@@ -1,3 +1,8 @@
 node_modules
 dist
 .env
+
+# Model weights fetched by `npm run fetch-model`. Never committed: the two
+# ONNX files are 118MB and 182MB, and GitHub hard-rejects files over 100MB.
+# Deployment uploads this directory to a CDN instead (see .env.example).
+public/models/

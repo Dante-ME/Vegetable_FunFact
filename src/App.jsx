@@ -139,6 +139,8 @@ function App() {
   async function handleValidDetection(result) {
     const { generator: rootFactsService } = state.services;
 
+    console.log('[DEBUG 1] TFJS classifier result:', result.className, 'confidence:', result.confidence);
+
     actions.setDetectionResult(result);
     actions.setAppState('analyzing');
     await createDelay(APP_CONFIG.analyzingDelay);
@@ -151,11 +153,15 @@ function App() {
     // ready yet (see RootFactsService), so the first detection of a session
     // gets a genuine generation attempt instead of an instant failure -
     // nothing needs to be kicked off separately here.
+    console.log('[DEBUG 1b] Label being passed into generateFacts():', result.className);
+
     const [fact] = await Promise.all([
       rootFactsService.generateFacts(result.className),
       createDelay(APP_CONFIG.factsGenerationDelay),
     ]);
     if (!isRunningRef.current) return;
+
+    console.log('[DEBUG FINAL] fact returned to UI:', fact);
 
     actions.setFunFactData(fact ?? 'error');
     stopScanning();
