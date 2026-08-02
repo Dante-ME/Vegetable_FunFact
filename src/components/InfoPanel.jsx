@@ -57,7 +57,7 @@ function InfoPanel({ appState, detectionResult, funFactData, error, onCopyFact, 
             fontSize: '0.875rem',
             color: '#92400e'
           }}>
-            Gagal menghasilkan fakta menarik. Mode offline atau layanan tidak tersedia.
+            Gagal membuat fakta menarik. Coba pindai ulang untuk mencoba lagi.
           </div>
         );
       }

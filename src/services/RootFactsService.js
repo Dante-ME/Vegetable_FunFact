@@ -1,6 +1,5 @@
 import { TextGenerationClient } from './TextGenerationClient.js';
-import { FactsRepository } from './FactsRepository.js';
-import { buildToneRewritePrompt } from '../utils/promptBuilder.js';
+import { buildFunFactPrompt } from '../utils/promptBuilder.js';
 import { logError, withTimeout } from '../utils/common.js';
 import {
   getActiveTextModelConfig,
@@ -11,18 +10,18 @@ import {
   isValidTone,
 } from '../config/textModel.config.js';
 
-/** Maximum character length a rewrite is allowed before it's treated as unusable. */
-const MAX_REWRITE_LENGTH = 400;
+/** Maximum character length a generation is allowed before it's treated as unusable. */
+const MAX_GENERATION_LENGTH = 400;
 
 /**
- * Turns a detected vegetable label into the fact shown to the user.
+ * Turns a detected vegetable label directly into the fun fact shown to the
+ * user, generated live by the configured text-generation model.
  *
- * The local knowledge base (FactsRepository) is always the source of truth
- * for WHAT is said - the language model (TextGenerationClient) only ever
- * restyles HOW it is said, for the currently selected tone. If the model
- * isn't loaded, times out, or returns something unusable, this service
- * falls back to the verified fact exactly as written: the user never sees
- * an invented claim, and never sees an error state instead of a fact.
+ * There is no local content behind this: generateFacts() either returns a
+ * freshly-generated sentence from the model, or null if the model can't be
+ * loaded, times out, or its output looks unusable. A null result is the
+ * caller's signal to show an error state - this service never substitutes
+ * any other content for it.
  *
  * Which model is used is entirely controlled by config/textModel.config.js -
  * this class never references a specific model id, so swapping models is a
@@ -30,7 +29,6 @@ const MAX_REWRITE_LENGTH = 400;
  */
 export class RootFactsService {
   constructor() {
-    this.factsRepository = new FactsRepository();
     this.textClient = null;
     this.isModelLoaded = false;
     this.isLoadingModel = false;
@@ -45,10 +43,10 @@ export class RootFactsService {
    *
    * Deliberately does NOT set any permanent "give up" flag on failure: bad
    * config, a network error, or no working backend are all caught and
-   * logged here so the app keeps working from the knowledge base alone,
-   * but isModelLoaded simply stays false, so the *next* call to loadModel()
-   * (e.g. after the next successful detection) retries from scratch - a
-   * transient failure never permanently disables tone rewriting.
+   * logged here, but isModelLoaded simply stays false, so the *next* call
+   * to loadModel() - including the one generateFacts() makes automatically
+   * below - retries from scratch. A transient failure never permanently
+   * disables generation for the rest of the session.
    */
   async loadModel() {
     if (this.isModelLoaded || this.isLoadingModel) return;
@@ -74,7 +72,7 @@ export class RootFactsService {
     }
   }
 
-  /** Sets the tone used for future rewrites; falls back to the default on an unknown value. */
+  /** Sets the tone used for future generations; falls back to the default on an unknown value. */
   setTone(tone) {
     this.currentTone = isValidTone(tone) ? tone : DEFAULT_TONE;
   }
@@ -89,31 +87,32 @@ export class RootFactsService {
   }
 
   /**
-   * Returns the fact to display for `vegetableLabel`, rewritten in the
-   * current tone when possible.
+   * Generates a fun fact about `vegetableLabel` in the current tone,
+   * directly from the text-generation model - the label is used as the
+   * prompt subject itself, not to look anything up.
    *
-   * @param {string} vegetableLabel - a label as produced by DetectionService,
-   *   expected to match one of the keys in src/data/facts.json.
-   * @returns {Promise<string|null>} the fact text, or null only if the label
-   *   has no entry in the knowledge base at all.
+   * If the model isn't loaded yet, this loads it first, so the very first
+   * detection of a session gets a genuine attempt instead of an instant
+   * failure. If that load fails, a generation is already in flight, the
+   * call times out, or the output looks unusable, this returns null and
+   * never substitutes any other content.
+   *
+   * @param {string} vegetableLabel - a label as produced by DetectionService.
+   * @returns {Promise<string|null>} the generated fact, or null on any failure.
    */
   async generateFacts(vegetableLabel) {
-    const verifiedFact = this.factsRepository.getFact(vegetableLabel);
+    if (!vegetableLabel) return null;
 
-    if (!verifiedFact) {
-      logError(
-        'RootFactsService.generateFacts',
-        new Error(`No verified fact found for label "${vegetableLabel}".`),
-      );
-      return null;
+    if (!this.isModelLoaded) {
+      await this.loadModel();
     }
 
     if (!this.isModelLoaded || this.isGenerating) {
-      return verifiedFact;
+      return null;
     }
 
     this.isGenerating = true;
-    const generationPromise = this._rewriteTone(verifiedFact, this.currentTone);
+    const generationPromise = this._generateFact(vegetableLabel, this.currentTone);
 
     // Transformers.js gives no way to cancel an in-flight pipeline call, so
     // withTimeout() below only stops *this method* from waiting on it - the
@@ -121,35 +120,33 @@ export class RootFactsService {
     // released here, tied to generationPromise itself settling, instead of
     // in a `finally` on the timeout race: if the timeout wins, the flag
     // stays true for as long as the real call is still running, so any
-    // generateFacts() call made in that window safely falls back to the
-    // verified fact instead of starting a second invocation against the
-    // same pipeline instance. Only once the real call finishes does the
-    // next call get to actually use the pipeline again.
+    // generateFacts() call made in that window safely returns null instead
+    // of starting a second invocation against the same pipeline instance.
     generationPromise.catch(() => {}).finally(() => {
       this.isGenerating = false;
     });
 
     try {
-      const rewritten = await withTimeout(generationPromise, GENERATION_TIMEOUT_MS);
-      return this._isUsableRewrite(rewritten) ? rewritten : verifiedFact;
+      const generated = await withTimeout(generationPromise, GENERATION_TIMEOUT_MS);
+      return this._isUsableGeneration(generated) ? generated : null;
     } catch (error) {
       logError('RootFactsService.generateFacts', error);
-      return verifiedFact;
+      return null;
     }
   }
 
-  async _rewriteTone(originalFact, tone) {
-    const messages = buildToneRewritePrompt(originalFact, tone);
+  async _generateFact(vegetableLabel, tone) {
+    const messages = buildFunFactPrompt(vegetableLabel, tone);
     return this.textClient.generate(messages, getGenerationConfig(tone));
   }
 
   /**
    * Cheap guard against obviously broken output (empty, or a runaway wall of
-   * repeated text) from a small model. This is not a fact-checker - the
-   * model is never trusted for correctness, only for a plausible rewrite.
+   * repeated text) from a small model. This is not a fact-checker - factual
+   * plausibility is asked for in the prompt, not verified after the fact.
    */
-  _isUsableRewrite(text) {
-    return typeof text === 'string' && text.trim().length > 0 && text.length < MAX_REWRITE_LENGTH;
+  _isUsableGeneration(text) {
+    return typeof text === 'string' && text.trim().length > 0 && text.length < MAX_GENERATION_LENGTH;
   }
 
   /** Releases the loaded model's resources, if any. */

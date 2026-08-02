@@ -1,39 +1,36 @@
 import { TONE_PROMPTS, DEFAULT_TONE } from '../config/textModel.config.js';
 
-const INSTRUCTION =
-  'Kamu adalah asisten yang menulis ulang SATU fakta sayuran ke dalam gaya bahasa tertentu, tanpa ' +
-  'mengubah isinya. Aturan yang wajib dipatuhi: ' +
-  '(1) Jangan menambahkan informasi, contoh, atau detail baru yang tidak ada di fakta asli. ' +
-  '(2) Jangan mengubah angka, satuan, atau nama yang sudah ada di fakta asli. ' +
-  '(3) Jangan mengulang kata atau frasa yang sama. ' +
-  '(4) Hanya gaya bahasa dan cara penyampaian yang boleh berubah, isinya harus tetap sama persis. ' +
-  'Jawab HANYA dengan satu kalimat hasil tulis ulang, tanpa basa-basi pembuka atau penutup.';
+const WORD_LIMIT = 30;
 
 /**
  * Builds the chat-formatted prompt sent to the text-generation model to
- * restyle `originalFact` into `tone`, without changing its meaning.
+ * generate a brand-new fun fact about a detected vegetable, in the
+ * selected tone.
  *
- * The model is used purely as a stylistic rewriter here - it is never asked
- * to supply facts of its own, only to reword ones it is given.
- *
- * Everything is folded into a single user-role message rather than split
- * across a system + user turn: not every chat template used by the models
- * in TEXT_MODEL_REGISTRY defines a dedicated system-role turn (Gemma's does
- * not), so keeping the whole instruction in the user message is the one
- * form guaranteed to be honored consistently regardless of which model is
- * active.
+ * The model's raw output is displayed to the user as-is (see
+ * RootFactsService) - there is no local knowledge base behind this and no
+ * rewriting step afterward, so this prompt is the only lever available for
+ * keeping the result on-topic, appropriately short, and free of invented
+ * specifics: it names the vegetable directly as the subject, bounds length
+ * and scope explicitly, and asks only for common, well-established
+ * information rather than precise-sounding numbers.
  */
-export function buildToneRewritePrompt(originalFact, tone) {
+export function buildFunFactPrompt(vegetableLabel, tone) {
   const toneInstruction = TONE_PROMPTS[tone] ?? TONE_PROMPTS[DEFAULT_TONE];
 
   return [
     {
       role: 'user',
       content:
-        `${INSTRUCTION}\n\n` +
-        `Fakta asli: "${originalFact}"\n` +
-        `Gaya bahasa: ${toneInstruction}\n` +
-        'Tulis ulang fakta tersebut sesuai gaya bahasa di atas.',
+        `Tuliskan TEPAT SATU fakta menarik dan singkat tentang ${vegetableLabel}.\n\n` +
+        'Aturan yang wajib dipatuhi:\n' +
+        `(1) Hanya bahas ${vegetableLabel}, jangan menyebutkan sayuran atau makanan lain.\n` +
+        `(2) Maksimal ${WORD_LIMIT} kata.\n` +
+        '(3) Sampaikan fakta yang masuk akal secara ilmiah dan umum diketahui, jangan mengarang ' +
+        'angka atau statistik yang tidak pasti.\n' +
+        '(4) Jangan menyebutkan bahwa kamu adalah AI, model bahasa, atau asisten.\n' +
+        `(5) Gaya bahasa: ${toneInstruction}\n` +
+        'Jawab HANYA dengan satu kalimat fakta tersebut, tanpa basa-basi pembuka atau penutup.',
     },
   ];
 }

@@ -147,16 +147,10 @@ function App() {
     actions.setFunFactData(null); // InfoPanel shows its "loading fact" state for this
     actions.setAppState('result');
 
-    // Fire-and-forget: the tone-rewrite model loads in the background.
-    // generateFacts() below already falls back to the verified fact on its
-    // own whenever the model isn't ready yet, so nothing here waits on this
-    // promise. Calling this on every detection (rather than only once ever)
-    // is intentional and safe: RootFactsService.loadModel() no-ops once the
-    // model is loaded and guards against overlapping attempts itself, so a
-    // transient failure (e.g. a network blip) gets retried on the next
-    // detection instead of permanently disabling tone rewriting.
-    rootFactsService.loadModel().catch((error) => logError('App.loadGeneratorModel', error));
-
+    // generateFacts() loads the text-generation model itself if it isn't
+    // ready yet (see RootFactsService), so the first detection of a session
+    // gets a genuine generation attempt instead of an instant failure -
+    // nothing needs to be kicked off separately here.
     const [fact] = await Promise.all([
       rootFactsService.generateFacts(result.className),
       createDelay(APP_CONFIG.factsGenerationDelay),
