@@ -7,8 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "lint": "eslint",
-    "fetch-model": "node scripts/fetch-model.mjs"
+    "lint": "eslint"
   },
   "dependencies": {
     "@huggingface/transformers": "^3.8.1",

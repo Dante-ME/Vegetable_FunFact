@@ -39,13 +39,6 @@ export default defineConfig({
         // Transformers.js already caches it itself via the Cache Storage
         // API, so a Workbox rule here would just duplicate that.
         globPatterns: ['**/*.{js,css,html,ico,png,svg,json,bin}'],
-        // The self-hosted text model lives in public/models/. Its .onnx
-        // weights are already excluded by globPatterns (no .onnx entry),
-        // but its config/tokenizer JSONs would otherwise be swept into the
-        // precache manifest - duplicating files transformers.js already
-        // caches itself via the Cache Storage API, and forcing the whole
-        // ~2MB tokenizer.json to download before the app shell is usable.
-        globIgnores: ['models/**'],
         // Workbox's default 2 MiB cap is smaller than both weights.bin
         // (~2.16MB) and this app's main JS chunk (~2.3MB) - raised with
         // headroom so precaching doesn't start failing the build again

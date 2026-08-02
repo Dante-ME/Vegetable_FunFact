@@ -26,19 +26,12 @@ export class TextGenerationClient {
    *   actually suits it instead of one dtype for every device.
    * @param {string[]} options.backendPreference - Devices to try, in order.
    *   The first one that loads successfully wins.
-   * @param {string} options.modelHost - Base URL the model files are served
-   *   from (trailing slash included). Same-origin paths like '/models/' are
-   *   valid here too.
-   * @param {string} options.pathTemplate - Path appended to `modelHost` to
-   *   locate a model directory, with '{model}' substituted.
    */
-  constructor({ modelId, task, dtypeByBackend, backendPreference, modelHost, pathTemplate }) {
+  constructor({ modelId, task, dtypeByBackend, backendPreference }) {
     this.modelId = modelId;
     this.task = task;
     this.dtypeByBackend = dtypeByBackend;
     this.backendPreference = backendPreference;
-    this.modelHost = modelHost;
-    this.pathTemplate = pathTemplate;
 
     this.pipelineInstance = null;
     this.resolvedDevice = null;
@@ -65,26 +58,12 @@ export class TextGenerationClient {
 
     const { pipeline, env } = await import('@huggingface/transformers');
 
-    // Point transformers.js at our own static host instead of the Hugging
-    // Face Hub. These are the library's supported hooks for this - a full
-    // URL cannot be passed as the model id, because hub.js validates the id
-    // with isValidHfModelId() and throws before requesting anything.
-    //
-    // allowRemoteModels stays true because "remote" here just means "over
-    // HTTP via remoteHost", which is how same-origin '/models/' is served
-    // too. allowLocalModels is pinned false (already the browser default)
-    // so there is exactly ONE resolution path in every environment: no
-    // filesystem probe, no silent second attempt, and - since remoteHost no
-    // longer points at Hugging Face - no way for a missing file to quietly
-    // fall back to downloading from the Hub. A missing file is a 404 that
-    // surfaces as a load failure, which is the intended no-fallback
-    // behavior.
-    env.remoteHost = this.modelHost;
-    env.remotePathTemplate = this.pathTemplate;
-    env.allowRemoteModels = true;
-    env.allowLocalModels = false;
-
-    console.log(`[PERF] Model host in use: ${env.remoteHost}${env.remotePathTemplate.replace('{model}', this.modelId)}`);
+    // No env.remoteHost / env.remotePathTemplate override: the model is a
+    // Hugging Face repo id and is resolved against the Hub exactly the way
+    // transformers.js resolves one by default, i.e.
+    //   <remoteHost><model>/resolve/<revision>/<file>
+    // Nothing in this project rewrites that any more.
+    console.log(`[PERF] Model source in use: ${env.remoteHost}${env.remotePathTemplate.replace('{model}', this.modelId)}`);
 
     const candidates = filterSupportedBackends(this.backendPreference);
 

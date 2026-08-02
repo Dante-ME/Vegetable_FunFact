@@ -2,7 +2,9 @@ node_modules
 dist
 .env
 
-# Model weights fetched by `npm run fetch-model`. Never committed: the two
-# ONNX files are 118MB and 182MB, and GitHub hard-rejects files over 100MB.
-# Deployment uploads this directory to a CDN instead (see .env.example).
-public/models/
+# Staging copy of the text-generation model, kept only to be uploaded to a
+# Hugging Face repo (see docs/huggingface-model-upload.md). Never committed:
+# the two ONNX files are 118MB and 182MB, and GitHub hard-rejects files over
+# 100MB. The app itself downloads these from the Hub at runtime, so nothing
+# here is needed to build or run the project.
+model-upload/

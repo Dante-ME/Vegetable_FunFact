@@ -16,42 +16,26 @@ import { TONE_CONFIG } from '../utils/config.js';
  * leakage, ignoring the detected vegetable).
  */
 /**
- * Model id, resolved against TEXT_MODEL_HOST below - NOT a Hugging Face
- * repo id any more. It stays repo-id-shaped on purpose: transformers.js
- * validates this string with isValidHfModelId() (utils/hub.js) and aborts
- * before any network request if it fails, so a bare folder name works but a
- * full URL does not. Note that rules out "--" anywhere in the name.
+ * Hugging Face repo id the weights are fetched from, in `owner/name` form.
+ * transformers.js resolves it against the Hub the way the library intends,
+ * so no host or path-template override is involved anywhere in this project.
+ *
+ * The default below is this project's own copy of the model, so a clone with
+ * no .env downloads from it directly. Set VITE_HF_MODEL_ID at build time to
+ * point the app at a different repo instead.
+ *
+ * Whatever id is used must be a PUBLIC repo: the browser fetches these files
+ * with no credentials, and shipping a Hub token in client-side JS would leak
+ * it to every visitor. It must also keep the upstream file layout, including
+ * the onnx/ subdirectory - see docs/huggingface-model-upload.md.
+ *
+ * The string is validated by transformers.js with isValidHfModelId()
+ * (utils/hub.js), which throws before any network request on a malformed id
+ * - so a full URL is not accepted here, and "--" is not allowed in the name.
  */
-export const TEXT_MODEL_ID = 'SmolLM2-135M-Instruct';
+export const TEXT_MODEL_ID =
+  import.meta.env.VITE_HF_MODEL_ID || 'DanteME/SmolLM2-135M-Instruct';
 export const TEXT_MODEL_TASK = 'text-generation';
-
-/**
- * Where the model weights are actually fetched from.
- *
- * Hugging Face is deliberately NOT used at runtime: measured throughput
- * from their CDN was ~150-170 KB/s for this project, confirmed both
- * in-browser and with curl, which made a ~118MB download the single
- * dominant cost of the whole detection-to-display flow. That is a delivery
- * problem, not a model problem, so it is solved at the delivery layer by
- * serving the exact same files from our own static host.
- *
- * Defaults to '/models/' - same-origin, i.e. whatever host is serving the
- * app. `npm run fetch-model` populates public/models/ for local dev, so the
- * default works with no configuration and no external account.
- *
- * Set VITE_MODEL_HOST at build time to serve from a CDN instead, e.g.
- * VITE_MODEL_HOST=https://models.example.com/. Must end with a slash.
- */
-export const TEXT_MODEL_HOST = import.meta.env.VITE_MODEL_HOST || '/models/';
-
-/**
- * Appended to TEXT_MODEL_HOST to locate a model's directory. transformers.js
- * defaults this to '{model}/resolve/{revision}/', which is Hugging Face's
- * URL layout; a plain static host has no /resolve/ segment, so it is
- * flattened to just the model folder. Final URL shape:
- *   <host><model>/<file>   e.g. /models/SmolLM2-135M-Instruct/config.json
- */
-export const TEXT_MODEL_PATH_TEMPLATE = '{model}/';
 
 // dtypeByBackend lets each candidate backend load the ONNX weight variant
 // that actually suits it - q4f16's fp16 activations are tuned for WebGPU's

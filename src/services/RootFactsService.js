@@ -6,8 +6,6 @@ import {
   TEXT_MODEL_TASK,
   TEXT_MODEL_DTYPE_BY_BACKEND,
   TEXT_MODEL_BACKEND_PREFERENCE,
-  TEXT_MODEL_HOST,
-  TEXT_MODEL_PATH_TEMPLATE,
   GENERATION_DEFAULTS,
   GENERATION_TIMEOUT_MS,
   DEFAULT_TONE,
@@ -111,8 +109,6 @@ export class RootFactsService {
           task: TEXT_MODEL_TASK,
           dtypeByBackend: TEXT_MODEL_DTYPE_BY_BACKEND,
           backendPreference: TEXT_MODEL_BACKEND_PREFERENCE,
-          modelHost: TEXT_MODEL_HOST,
-          pathTemplate: TEXT_MODEL_PATH_TEMPLATE,
         });
       }
 
