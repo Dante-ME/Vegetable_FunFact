@@ -111,14 +111,33 @@ export const MODEL_LOAD_TIMEOUT_MS = 60000;
  * regardless of decoding strategy - they guard against a different failure
  * mode (degenerate repetition loops) that both greedy and sampled decoding
  * are prone to.
+ *
+ * Both penalties are set LOW on purpose. In transformers.js they are scored
+ * over the entire sequence, prompt included, not just the generated tokens
+ * - RepetitionPenaltyLogitsProcessor iterates `new Set(input_ids[i])` and
+ * NoRepeatNGramLogitsProcessor calls calcBannedNgramTokens(input_ids[i])
+ * (generation/logits_process.js), and the library's own docstring notes
+ * "for decoder-only models like most LLMs, the considered tokens include
+ * the prompt". Two consequences drove these values:
+ *
+ * - repetition_penalty was 1.3, which divided the logit of every token
+ *   already in the prompt - including the detected vegetable's name, the
+ *   one word the answer most needs. That pushed generation toward generic
+ *   filler and away from the actual subject. 1.05 still damps runaway
+ *   loops without penalizing the subject out of the output.
+ * - no_repeat_ngram_size was 3. promptBuilder.js now puts three example
+ *   sentences in context, and banning every 3-gram that appears in them
+ *   bans ordinary English connectives, forcing contorted phrasing. At 6,
+ *   a blocked repeat is almost certainly a degenerate loop rather than
+ *   normal language, so the loop protection survives intact.
  */
 export const GENERATION_DEFAULTS = {
   max_new_tokens: 48,
   do_sample: true,
   temperature: 0.3,
   top_p: 0.85,
-  repetition_penalty: 1.3,
-  no_repeat_ngram_size: 3,
+  repetition_penalty: 1.05,
+  no_repeat_ngram_size: 6,
 };
 
 /** Falls back to this tone if an unknown/unset tone value is requested. */
